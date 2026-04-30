@@ -1,9 +1,22 @@
 """Claude client wrapper with Anthropic web search and fallback search."""
 
+import re
+
 import anthropic
 from anthropic import AsyncAnthropic
 from config import settings
 from search_client import search_client
+
+
+_URL_RE = re.compile(r"https?://\S+")
+
+
+def _clean_err(e: Exception) -> str:
+    """Sanitize error text: strip URLs (Discord auto-embeds) and limit length."""
+    text = str(e).split("\n")[0]
+    text = _URL_RE.sub("", text)
+    text = text.replace("`", "").strip()
+    return text[:180] if text else type(e).__name__
 
 
 # Default Lain personality
@@ -92,11 +105,9 @@ class ClaudeClient:
             return "\n".join(parts).strip()
 
         except anthropic.APIError as e:
-            msg = str(e).split("\n")[0][:200]
-            return f"Che, la API de Claude se quejó. Reintentame. Error: {msg}"
+            return f"Che, la API de Claude se quejó. Reintentame. ({_clean_err(e)})"
         except Exception as e:
-            msg = str(e).split("\n")[0][:200]
-            return f"Ups, me rompí algo interno. Reintentame en un toque. Error: {msg}"
+            return f"Ups, algo se rompió. Reintentame en un toque. ({_clean_err(e)})"
     
     async def analyze_conversation(self, history_text: str, task: str) -> str:
         """Analyze a conversation with a specific task (e.g., summarize)."""
