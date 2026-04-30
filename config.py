@@ -1,0 +1,75 @@
+"""Configuration module using pydantic-settings for validation."""
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
+
+
+class Config(BaseSettings):
+    """Bot configuration loaded from environment variables."""
+    
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+    
+    # Discord
+    DISCORD_BOT_TOKEN: str = Field(..., description="Discord bot token")
+    BOT_PREFIX: str = Field(default="!", description="Command prefix")
+    ALLOWED_GUILD_ID: int | None = Field(
+        default=None,
+        description="Only respond in this guild ID (None = no restriction)"
+    )
+    ALLOWED_CHANNEL_ID: int | None = Field(
+        default=None,
+        description="Only respond in this channel ID (None = no restriction)"
+    )
+    
+    # Claude / Anthropic
+    ANTHROPIC_API_KEY: str = Field(..., description="Anthropic API key")
+    ANTHROPIC_MODEL: str = Field(
+        default="claude-sonnet-4-5",
+        description="Claude model to use"
+    )
+    MAX_TOKENS: int = Field(default=4096, description="Max tokens per response")
+    SYSTEM_PROMPT: str | None = Field(
+        default=None,
+        description="Override system prompt (None = use default Lain personality)"
+    )
+    
+    # Context / Storage
+    DATA_DIR: str = Field(default="./data", description="Directory for .md context files")
+    HISTORY_LIMIT: int = Field(
+        default=100,
+        description="Number of messages to fetch from Discord history"
+    )
+    
+    # Web Search Fallback
+    TAVILY_API_KEY: str | None = Field(
+        default=None,
+        description="Tavily API key for fallback search"
+    )
+    SERPAPI_KEY: str | None = Field(
+        default=None,
+        description="SerpAPI key for fallback search"
+    )
+    
+    # Spontaneous responses (opt-in, disabled by default)
+    SPONTANEOUS_RESPONSE: bool = Field(
+        default=False,
+        description="Bot responds without being mentioned"
+    )
+    SPONTANEOUS_PROBABILITY: float = Field(
+        default=0.3,
+        description="Probability of spontaneous response (0.0-1.0)"
+    )
+    
+    # Health
+    HEALTHCHECK_INTERVAL: int = Field(
+        default=30,
+        description="Healthcheck interval in seconds"
+    )
+
+
+# Global config instance
+settings = Config()
