@@ -78,20 +78,25 @@ class ClaudeClient:
             if self.tools:
                 create_kwargs["tools"] = self.tools
 
-            response = await self.client.messages.create(**create_kwargs)
+            # Always stream — Anthropic requires it for long-running ops (>10min)
+            # like extended thinking with high budgets or 1M context.
+            async with self.client.messages.stream(**create_kwargs) as stream:
+                final_message = await stream.get_final_message()
 
             # Concatenate all text blocks (skip thinking & tool blocks)
             parts = [
                 block.text
-                for block in response.content
+                for block in final_message.content
                 if getattr(block, "type", None) == "text" and getattr(block, "text", None)
             ]
             return "\n".join(parts).strip()
-            
+
         except anthropic.APIError as e:
-            return f"Che, me quede sin creditos o la API de Claude esta caida. Error: {str(e)[:100]}"
+            msg = str(e).split("\n")[0][:200]
+            return f"Che, la API de Claude se quejó. Reintentame. Error: {msg}"
         except Exception as e:
-            return f"Ups, me rompi algo interno. Reintentame en un toque. Error: {str(e)[:100]}"
+            msg = str(e).split("\n")[0][:200]
+            return f"Ups, me rompí algo interno. Reintentame en un toque. Error: {msg}"
     
     async def analyze_conversation(self, history_text: str, task: str) -> str:
         """Analyze a conversation with a specific task (e.g., summarize)."""
