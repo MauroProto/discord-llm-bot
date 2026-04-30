@@ -113,56 +113,33 @@ def _build_claude_messages(history: list[dict], current_author: str, current_con
     return messages
 
 
-def _detect_search_need(content: str) -> str | None:
-    """Detect if a message needs web search."""
-    search_indicators = [
-        "busca", "buscar", "googlea", "investiga", "info sobre",
-        "que es", "como funciona", "ultimas noticias", "tendencias",
-        "documentacion", "api de", "framework", "libreria",
-    ]
-    content_lower = content.lower()
-    for indicator in search_indicators:
-        if indicator in content_lower:
-            # Return a cleaned search query
-            return content.replace("@Lain", "").replace("!buscar", "").strip()
-    return None
-
-
 @bot.event
 async def on_message(message: discord.Message):
     """Main message handler — detects mentions and triggers responses."""
     # Process commands first
     await bot.process_commands(message)
-    
+
     # Skip if we shouldn't respond
     if not _should_respond(message):
         return
-    
+
     # Mark as processed
     _mark_processed(message.id)
-    
+
     try:
         async with message.channel.typing():
             # Fetch channel history
             history = await context_manager.get_channel_history(message.channel)
-            
-            # Detect if search is needed
-            search_query = _detect_search_need(message.content)
-            use_search = search_query is not None
-            
-            # Build messages for Claude
+
+            # Build messages for Claude (Claude decides if it needs to web_search)
             claude_messages = _build_claude_messages(
                 history,
                 str(message.author),
                 message.content.replace(f"<@{bot.user.id}>", "@Lain").strip()
             )
-            
-            # Generate response
-            response = await claude_client.generate_response(
-                messages=claude_messages,
-                use_search=use_search,
-                search_query=search_query,
-            )
+
+            # Generate response (web_search is enabled as a tool, Claude uses it when needed)
+            response = await claude_client.generate_response(messages=claude_messages)
             
             # Save context (only the new exchange, not full history)
             channel_name = getattr(message.channel, "name", None)

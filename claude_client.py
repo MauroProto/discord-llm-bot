@@ -29,6 +29,7 @@ class ClaudeClient:
     """Async client for Anthropic Claude with web search support."""
     
     CONTEXT_1M_BETA = "context-1m-2025-08-07"
+    WEB_SEARCH_TOOL_TYPE = "web_search_20250305"
 
     def __init__(self):
         self.client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
@@ -47,6 +48,14 @@ class ClaudeClient:
         if settings.EXTENDED_THINKING:
             budget = max(1024, min(settings.THINKING_BUDGET_TOKENS, self.max_tokens - 1024))
             self.thinking_param = {"type": "enabled", "budget_tokens": budget}
+
+        self.tools: list[dict] | None = None
+        if settings.ENABLE_WEB_SEARCH:
+            self.tools = [{
+                "type": self.WEB_SEARCH_TOOL_TYPE,
+                "name": "web_search",
+                "max_uses": settings.WEB_SEARCH_MAX_USES,
+            }]
     
     async def generate_response(
         self,
@@ -54,26 +63,8 @@ class ClaudeClient:
         use_search: bool = False,
         search_query: str | None = None,
     ) -> str:
-        """Generate a response from Claude.
-        
-        Args:
-            messages: List of {"role": "user"|"assistant", "content": str}
-            use_search: Whether to use web search
-            search_query: Optional specific search query
-        """
+        """Generate a response from Claude with native web_search."""
         try:
-            # If search is requested, do fallback search and prepend results
-            search_context = ""
-            if use_search and search_query:
-                results = await search_client.search(search_query)
-                search_context = search_client.format_results(results)
-                # Prepend search results to the last user message
-                if messages and messages[-1]["role"] == "user":
-                    messages[-1]["content"] = (
-                        f"[Informacion de busqueda web]:\n{search_context}\n\n"
-                        f"[Consulta del usuario]:\n{messages[-1]['content']}"
-                    )
-            
             create_kwargs: dict = {
                 "model": self.model,
                 "max_tokens": self.max_tokens,
@@ -84,14 +75,18 @@ class ClaudeClient:
                 create_kwargs["extra_headers"] = self.extra_headers
             if self.thinking_param:
                 create_kwargs["thinking"] = self.thinking_param
+            if self.tools:
+                create_kwargs["tools"] = self.tools
 
             response = await self.client.messages.create(**create_kwargs)
 
-            # Extract text from content blocks (skip thinking blocks)
-            for block in response.content:
-                if getattr(block, "type", None) == "text":
-                    return block.text
-            return ""
+            # Concatenate all text blocks (skip thinking & tool blocks)
+            parts = [
+                block.text
+                for block in response.content
+                if getattr(block, "type", None) == "text" and getattr(block, "text", None)
+            ]
+            return "\n".join(parts).strip()
             
         except anthropic.APIError as e:
             return f"Che, me quede sin creditos o la API de Claude esta caida. Error: {str(e)[:100]}"

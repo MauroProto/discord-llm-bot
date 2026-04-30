@@ -44,6 +44,16 @@ class Config(BaseSettings):
         description="Max tokens reserved for extended thinking (must be < MAX_TOKENS)"
     )
     MAX_TOKENS: int = Field(default=32000, description="Max tokens per response (output + thinking)")
+
+    # Web search (Anthropic native server-side tool)
+    ENABLE_WEB_SEARCH: bool = Field(
+        default=True,
+        description="Enable Anthropic native web_search tool (server-side)"
+    )
+    WEB_SEARCH_MAX_USES: int = Field(
+        default=5,
+        description="Max searches per turn"
+    )
     SYSTEM_PROMPT: str | None = Field(
         default=None,
         description="Override system prompt (None = use default Lain personality)"
