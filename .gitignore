@@ -26,3 +26,6 @@ data/
 .idea/
 *.swp
 *.swo
+
+# Claude Code internals
+.claude/
