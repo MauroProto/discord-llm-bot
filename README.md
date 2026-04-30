@@ -103,8 +103,11 @@ Para cambiar la personalidad, setea `SYSTEM_PROMPT` en el `.env`.
 | `ANTHROPIC_API_KEY` | Si | - | API key de Anthropic |
 | `ALLOWED_GUILD_ID` | Si | - | Solo responde en este servidor |
 | `ALLOWED_CHANNEL_ID` | No | - | Solo responde en este canal (opcional) |
-| `ANTHROPIC_MODEL` | No | claude-sonnet-4-5 | Modelo de Claude |
-| `MAX_TOKENS` | No | 4096 | Max tokens por respuesta |
+| `ANTHROPIC_MODEL` | No | claude-opus-4-7 | Modelo de Claude |
+| `ENABLE_1M_CONTEXT` | No | true | Activa ventana de 1M tokens (beta) |
+| `EXTENDED_THINKING` | No | true | Activa razonamiento extendido |
+| `THINKING_BUDGET_TOKENS` | No | 24000 | Tokens reservados para pensar |
+| `MAX_TOKENS` | No | 32000 | Max tokens por respuesta (output + thinking) |
 | `HISTORY_LIMIT` | No | 100 | Mensajes de historial a leer |
 | `TAVILY_API_KEY` | No | - | API key de Tavily (fallback busqueda) |
 | `SERPAPI_KEY` | No | - | API key de SerpAPI (fallback busqueda) |

@@ -28,10 +28,22 @@ class Config(BaseSettings):
     # Claude / Anthropic
     ANTHROPIC_API_KEY: str = Field(..., description="Anthropic API key")
     ANTHROPIC_MODEL: str = Field(
-        default="claude-sonnet-4-5",
+        default="claude-opus-4-7",
         description="Claude model to use"
     )
-    MAX_TOKENS: int = Field(default=4096, description="Max tokens per response")
+    ENABLE_1M_CONTEXT: bool = Field(
+        default=True,
+        description="Enable 1M context window beta (Opus/Sonnet 4.x)"
+    )
+    EXTENDED_THINKING: bool = Field(
+        default=True,
+        description="Enable extended thinking (reasoning) for Claude 4.x"
+    )
+    THINKING_BUDGET_TOKENS: int = Field(
+        default=24000,
+        description="Max tokens reserved for extended thinking (must be < MAX_TOKENS)"
+    )
+    MAX_TOKENS: int = Field(default=32000, description="Max tokens per response (output + thinking)")
     SYSTEM_PROMPT: str | None = Field(
         default=None,
         description="Override system prompt (None = use default Lain personality)"

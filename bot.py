@@ -164,13 +164,23 @@ async def on_message(message: discord.Message):
                 search_query=search_query,
             )
             
-            # Save context
+            # Save context (only the new exchange, not full history)
+            channel_name = getattr(message.channel, "name", None)
             context_manager.save_daily_context(
                 channel_id=message.channel.id,
-                history=history,
                 bot_response=response,
                 query=message.content,
+                author=str(message.author),
+                channel_name=channel_name,
             )
+            if isinstance(message.channel, discord.Thread):
+                context_manager.save_thread_context(
+                    thread_id=message.channel.id,
+                    bot_response=response,
+                    query=message.content,
+                    author=str(message.author),
+                    thread_name=channel_name,
+                )
             
             # Send response (chunked if too long)
             if len(response) <= 2000:

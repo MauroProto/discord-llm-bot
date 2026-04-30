@@ -28,11 +28,25 @@ Contexto: el grupo se llama "hack", el objetivo es preparar un hackathon. Los in
 class ClaudeClient:
     """Async client for Anthropic Claude with web search support."""
     
+    CONTEXT_1M_BETA = "context-1m-2025-08-07"
+
     def __init__(self):
         self.client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
         self.model = settings.ANTHROPIC_MODEL
         self.max_tokens = settings.MAX_TOKENS
         self.system_prompt = settings.SYSTEM_PROMPT or LAIN_PERSONALITY
+
+        betas: list[str] = []
+        if settings.ENABLE_1M_CONTEXT:
+            betas.append(self.CONTEXT_1M_BETA)
+        self.extra_headers: dict[str, str] = (
+            {"anthropic-beta": ",".join(betas)} if betas else {}
+        )
+
+        self.thinking_param: dict | None = None
+        if settings.EXTENDED_THINKING:
+            budget = max(1024, min(settings.THINKING_BUDGET_TOKENS, self.max_tokens - 1024))
+            self.thinking_param = {"type": "enabled", "budget_tokens": budget}
     
     async def generate_response(
         self,
@@ -60,14 +74,24 @@ class ClaudeClient:
                         f"[Consulta del usuario]:\n{messages[-1]['content']}"
                     )
             
-            response = await self.client.messages.create(
-                model=self.model,
-                max_tokens=self.max_tokens,
-                system=self.system_prompt,
-                messages=messages,
-            )
-            
-            return response.content[0].text
+            create_kwargs: dict = {
+                "model": self.model,
+                "max_tokens": self.max_tokens,
+                "system": self.system_prompt,
+                "messages": messages,
+            }
+            if self.extra_headers:
+                create_kwargs["extra_headers"] = self.extra_headers
+            if self.thinking_param:
+                create_kwargs["thinking"] = self.thinking_param
+
+            response = await self.client.messages.create(**create_kwargs)
+
+            # Extract text from content blocks (skip thinking blocks)
+            for block in response.content:
+                if getattr(block, "type", None) == "text":
+                    return block.text
+            return ""
             
         except anthropic.APIError as e:
             return f"Che, me quede sin creditos o la API de Claude esta caida. Error: {str(e)[:100]}"
