@@ -57,10 +57,13 @@ class ClaudeClient:
             {"anthropic-beta": ",".join(betas)} if betas else {}
         )
 
+        # Opus 4.7 uses adaptive thinking + output_config.effort
+        # Old format {"type": "enabled", "budget_tokens": N} returns 400 on Opus 4.7.
         self.thinking_param: dict | None = None
+        self.output_config: dict | None = None
         if settings.EXTENDED_THINKING:
-            budget = max(1024, min(settings.THINKING_BUDGET_TOKENS, self.max_tokens - 1024))
-            self.thinking_param = {"type": "enabled", "budget_tokens": budget}
+            self.thinking_param = {"type": "adaptive"}
+            self.output_config = {"effort": settings.THINKING_EFFORT}
 
         self.tools: list[dict] | None = None
         if settings.ENABLE_WEB_SEARCH:
@@ -88,6 +91,8 @@ class ClaudeClient:
                 create_kwargs["extra_headers"] = self.extra_headers
             if self.thinking_param:
                 create_kwargs["thinking"] = self.thinking_param
+            if self.output_config:
+                create_kwargs["output_config"] = self.output_config
             if self.tools:
                 create_kwargs["tools"] = self.tools
 

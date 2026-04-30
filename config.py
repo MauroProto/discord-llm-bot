@@ -37,11 +37,11 @@ class Config(BaseSettings):
     )
     EXTENDED_THINKING: bool = Field(
         default=True,
-        description="Enable extended thinking (reasoning) for Claude 4.x"
+        description="Enable adaptive thinking (Claude Opus 4.7+)"
     )
-    THINKING_BUDGET_TOKENS: int = Field(
-        default=24000,
-        description="Max tokens reserved for extended thinking (must be < MAX_TOKENS)"
+    THINKING_EFFORT: str = Field(
+        default="max",
+        description="Reasoning effort: low | medium | high | xhigh | max"
     )
     MAX_TOKENS: int = Field(default=32000, description="Max tokens per response (output + thinking)")
 
