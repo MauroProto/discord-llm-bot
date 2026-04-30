@@ -116,11 +116,22 @@ def _build_claude_messages(history: list[dict], current_author: str, current_con
 @bot.event
 async def on_message(message: discord.Message):
     """Main message handler — detects mentions and triggers responses."""
+    # DEBUG: log every received message
+    print(
+        f"[MSG] guild={getattr(message.guild, 'id', None)} "
+        f"channel={message.channel.id} "
+        f"author={message.author} "
+        f"is_bot={message.author.bot} "
+        f"mentioned_me={bot.user.mentioned_in(message) if bot.user else False} "
+        f"content={message.content!r}"
+    )
+
     # Process commands first
     await bot.process_commands(message)
 
     # Skip if we shouldn't respond
     if not _should_respond(message):
+        print(f"[MSG] no respondo (filtros): canal_permitido={settings.ALLOWED_CHANNEL_ID}")
         return
 
     # Mark as processed
