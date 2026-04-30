@@ -1,8 +1,10 @@
 """Lain Discord Bot — Core module with event handlers and commands."""
 
+import base64
 import os
 import random
 from collections import deque
+import aiohttp
 import discord
 from discord.ext import commands
 from datetime import datetime
@@ -96,21 +98,104 @@ def _should_respond(message: discord.Message) -> bool:
     return False
 
 
-def _build_claude_messages(history: list[dict], current_author: str, current_content: str) -> list[dict]:
-    """Convert Discord history to Claude message format."""
+def _build_claude_history(history: list[dict], exclude_id: int | None = None) -> list[dict]:
+    """Convert Discord history to Claude message format (without current message)."""
     messages = []
     for msg in history:
+        if exclude_id is not None and msg.get("id") == exclude_id:
+            continue
         role = "assistant" if msg.get("is_bot") else "user"
         content = f"{msg['author']}: {msg['content']}"
         messages.append({"role": role, "content": content})
-    
-    # Add current message
-    messages.append({
-        "role": "user",
-        "content": f"{current_author}: {current_content}"
-    })
-    
     return messages
+
+
+_TEXT_EXTS = (
+    ".md", ".txt", ".json", ".csv", ".py", ".js", ".ts", ".tsx", ".jsx",
+    ".html", ".css", ".yaml", ".yml", ".sh", ".log", ".sql", ".toml",
+    ".xml", ".env", ".ini", ".cfg",
+)
+_IMG_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif")
+_MAX_TEXT_BYTES = 200_000  # cap per text attachment
+
+
+async def _build_user_content(message: discord.Message, bot_user_id: int):
+    """Build the current user message content for Claude — text or multimodal blocks."""
+    cleaned_text = message.content.replace(f"<@{bot_user_id}>", "@Lain").strip()
+    base = f"{message.author}: {cleaned_text}" if cleaned_text else f"{message.author}:"
+
+    if not message.attachments:
+        return base
+
+    text_chunks: list[str] = []
+    media_blocks: list[dict] = []
+
+    async with aiohttp.ClientSession() as session:
+        for att in message.attachments:
+            ct = (att.content_type or "").split(";")[0].strip().lower()
+            fn_lower = att.filename.lower()
+
+            try:
+                async with session.get(
+                    att.url, timeout=aiohttp.ClientTimeout(total=30)
+                ) as resp:
+                    if resp.status != 200:
+                        continue
+                    data = await resp.read()
+            except Exception as e:
+                print(f"[ATTACH] error fetching {att.filename}: {e}")
+                continue
+
+            is_image = ct.startswith("image/") or fn_lower.endswith(_IMG_EXTS)
+            is_pdf = ct == "application/pdf" or fn_lower.endswith(".pdf")
+            is_text = ct.startswith("text/") or fn_lower.endswith(_TEXT_EXTS)
+
+            if is_image:
+                media_type = ct if ct.startswith("image/") else "image/png"
+                media_blocks.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": media_type,
+                        "data": base64.b64encode(data).decode("ascii"),
+                    },
+                })
+                print(f"[ATTACH] image: {att.filename}")
+            elif is_pdf:
+                media_blocks.append({
+                    "type": "document",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "application/pdf",
+                        "data": base64.b64encode(data).decode("ascii"),
+                    },
+                })
+                print(f"[ATTACH] pdf: {att.filename}")
+            elif is_text:
+                content = data[:_MAX_TEXT_BYTES].decode("utf-8", errors="replace")
+                truncated_note = " (truncado)" if len(data) > _MAX_TEXT_BYTES else ""
+                text_chunks.append(
+                    f"--- Adjunto: {att.filename}{truncated_note} ---\n{content}\n--- fin {att.filename} ---"
+                )
+                print(f"[ATTACH] text: {att.filename} ({len(data)} bytes)")
+            else:
+                # Try as text as last resort
+                try:
+                    content = data[:_MAX_TEXT_BYTES].decode("utf-8")
+                    text_chunks.append(
+                        f"--- Adjunto: {att.filename} ---\n{content}\n--- fin ---"
+                    )
+                    print(f"[ATTACH] unknown-as-text: {att.filename}")
+                except UnicodeDecodeError:
+                    print(f"[ATTACH] skipped binary: {att.filename}")
+
+    full_text = base
+    if text_chunks:
+        full_text = base + "\n\n" + "\n\n".join(text_chunks)
+
+    if media_blocks:
+        return [*media_blocks, {"type": "text", "text": full_text}]
+    return full_text
 
 
 @bot.event
@@ -139,15 +224,13 @@ async def on_message(message: discord.Message):
 
     try:
         async with message.channel.typing():
-            # Fetch channel history
+            # Fetch channel history (excluding the current message to avoid duplication)
             history = await context_manager.get_channel_history(message.channel)
 
-            # Build messages for Claude (Claude decides if it needs to web_search)
-            claude_messages = _build_claude_messages(
-                history,
-                str(message.author),
-                message.content.replace(f"<@{bot.user.id}>", "@Lain").strip()
-            )
+            # Build claude messages: history + current message (with attachments if any)
+            claude_messages = _build_claude_history(history, exclude_id=message.id)
+            user_content = await _build_user_content(message, bot.user.id)
+            claude_messages.append({"role": "user", "content": user_content})
 
             # Generate response (web_search is enabled as a tool, Claude uses it when needed)
             response = await claude_client.generate_response(messages=claude_messages)
