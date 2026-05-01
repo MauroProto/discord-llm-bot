@@ -262,8 +262,18 @@ async def on_message(message: discord.Message):
             user_content = await _build_user_content(message, bot.user.id)
             claude_messages.append({"role": "user", "content": user_content})
 
+            # Long-term memory: load recent .md context as background
+            memory_text = context_manager.load_recent_memory(
+                days=settings.MEMORY_DAYS,
+                max_chars=settings.MEMORY_MAX_CHARS,
+            )
+            print(f"[MEM] cargada memoria de fondo: {len(memory_text)} chars")
+
             # Generate response (web_search is enabled as a tool, Claude uses it when needed)
-            response = await claude_client.generate_response(messages=claude_messages)
+            response = await claude_client.generate_response(
+                messages=claude_messages,
+                memory_text=memory_text,
+            )
             
             # Save context (only the new exchange, not full history)
             channel_name = getattr(message.channel, "name", None)

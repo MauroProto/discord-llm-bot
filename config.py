@@ -65,6 +65,16 @@ class Config(BaseSettings):
         default=100,
         description="Number of messages to fetch from Discord history"
     )
+
+    # Long-term memory: load recent .md context into prompt automatically
+    MEMORY_DAYS: int = Field(
+        default=14,
+        description="Days of saved context to inject as long-term memory"
+    )
+    MEMORY_MAX_CHARS: int = Field(
+        default=400_000,
+        description="Cap on total characters loaded from .md memory"
+    )
     
     # Web Search Fallback
     TAVILY_API_KEY: str | None = Field(

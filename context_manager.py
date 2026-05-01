@@ -1,7 +1,7 @@
 """Context manager: reads Discord channel history and persists to .md files."""
 
 import discord
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from config import settings
 
@@ -104,6 +104,48 @@ class ContextManager:
         """Get full context: channel history + saved daily file path."""
         history = await self.get_channel_history(channel)
         return history
+
+    def load_recent_memory(self, days: int = 14, max_chars: int = 400_000) -> str:
+        """Load recent days of saved context for long-term memory injection.
+
+        Reads contexts/YYYY-MM-DD.md from newest to oldest, capping at max_chars.
+        Returns chronologically-ordered text. Empty string if nothing exists.
+        """
+        if days <= 0 or max_chars <= 0:
+            return ""
+
+        today = datetime.now().date()
+        files: list[tuple[str, Path]] = []
+        for i in range(days):
+            d = today - timedelta(days=i)
+            label = d.strftime("%Y-%m-%d")
+            f = self.contexts_dir / f"{label}.md"
+            if f.exists():
+                files.append((label, f))
+
+        if not files:
+            return ""
+
+        # Newest first; consume budget; then reverse to chronological.
+        chunks: list[tuple[str, str]] = []
+        total = 0
+        for label, f in files:
+            remaining = max_chars - total
+            if remaining <= 0:
+                break
+            try:
+                text = f.read_text(encoding="utf-8")
+            except Exception:
+                continue
+            if not text.strip():
+                continue
+            if len(text) > remaining:
+                text = "[...inicio del dia truncado para ahorrar contexto...]\n\n" + text[-remaining:]
+            chunks.append((label, text))
+            total += len(text)
+
+        chunks.reverse()
+        return "\n\n".join(text for _, text in chunks)
 
 
 # Singleton instance

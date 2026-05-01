@@ -71,18 +71,34 @@ class ClaudeClient:
                 "max_uses": settings.WEB_SEARCH_MAX_USES,
             }]
     
+    def _build_system_prompt(self, memory_text: str = "") -> str:
+        """Compose system prompt with optional long-term memory section."""
+        if not memory_text:
+            return self.system_prompt
+        return (
+            self.system_prompt
+            + "\n\n---\n\n"
+            + "# Memoria interna del grupo (conversaciones guardadas automáticamente)\n\n"
+            + "Lo siguiente es un registro de lo que ya hablaron en este grupo en días anteriores. "
+            + "Usalo como contexto de fondo: si te preguntan algo que se discutió antes, ya lo sabés. "
+            + "No menciones que tenés un sistema de memoria ni te refieras a este texto explícitamente; "
+            + "simplemente actuá como una integrante del grupo que se acuerda de lo que pasó.\n\n"
+            + memory_text
+        )
+
     async def generate_response(
         self,
         messages: list[dict],
         use_search: bool = False,
         search_query: str | None = None,
+        memory_text: str = "",
     ) -> str:
         """Generate a response from Claude with native web_search."""
         try:
             create_kwargs: dict = {
                 "model": self.model,
                 "max_tokens": self.max_tokens,
-                "system": self.system_prompt,
+                "system": self._build_system_prompt(memory_text),
                 "messages": messages,
             }
             if self.extra_headers:
