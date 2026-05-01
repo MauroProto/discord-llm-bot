@@ -98,15 +98,25 @@ def _should_respond(message: discord.Message) -> bool:
     return False
 
 
+_BOT_SELF_PREFIXES = ("Lain-bot#0013:", "Lain-bot:", "Lain:")
+
+
 def _build_claude_history(history: list[dict], exclude_id: int | None = None) -> list[dict]:
     """Convert Discord history to Claude message format (without current message)."""
     messages = []
     for msg in history:
         if exclude_id is not None and msg.get("id") == exclude_id:
             continue
-        role = "assistant" if msg.get("is_bot") else "user"
-        content = f"{msg['author']}: {msg['content']}"
-        messages.append({"role": role, "content": content})
+        if msg.get("is_bot"):
+            content = msg["content"]
+            for prefix in _BOT_SELF_PREFIXES:
+                if content.startswith(prefix):
+                    content = content[len(prefix):].lstrip()
+                    break
+            messages.append({"role": "assistant", "content": content})
+        else:
+            content = f"{msg['author']}: {msg['content']}"
+            messages.append({"role": "user", "content": content})
     return messages
 
 
@@ -124,14 +134,34 @@ async def _build_user_content(message: discord.Message, bot_user_id: int):
     cleaned_text = message.content.replace(f"<@{bot_user_id}>", "@Lain").strip()
     base = f"{message.author}: {cleaned_text}" if cleaned_text else f"{message.author}:"
 
-    if not message.attachments:
+    # Collect attachments from current message + referenced (replied-to) message
+    attachments: list[discord.Attachment] = list(message.attachments)
+    ref_text = ""
+    if message.reference and message.reference.message_id:
+        try:
+            ref_msg = message.reference.resolved
+            if ref_msg is None:
+                ref_msg = await message.channel.fetch_message(message.reference.message_id)
+            if ref_msg:
+                attachments.extend(ref_msg.attachments)
+                if ref_msg.content:
+                    ref_text = (
+                        f"[Respondiendo a {ref_msg.author}: \"{ref_msg.content[:300]}\"]"
+                    )
+        except Exception as e:
+            print(f"[REF] no pude leer el mensaje referenciado: {e}")
+
+    if ref_text:
+        base = f"{ref_text}\n{base}"
+
+    if not attachments:
         return base
 
     text_chunks: list[str] = []
     media_blocks: list[dict] = []
 
     async with aiohttp.ClientSession() as session:
-        for att in message.attachments:
+        for att in attachments:
             ct = (att.content_type or "").split(";")[0].strip().lower()
             fn_lower = att.filename.lower()
 
