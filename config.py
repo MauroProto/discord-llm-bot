@@ -54,6 +54,16 @@ class Config(BaseSettings):
         default=5,
         description="Max searches per turn"
     )
+
+    # Web fetch (Anthropic native server-side tool, beta)
+    ENABLE_WEB_FETCH: bool = Field(
+        default=True,
+        description="Enable Anthropic native web_fetch tool to read specific URLs"
+    )
+    WEB_FETCH_MAX_USES: int = Field(
+        default=5,
+        description="Max fetches per turn"
+    )
     SYSTEM_PROMPT: str | None = Field(
         default=None,
         description="Override system prompt (None = use default Lain personality)"

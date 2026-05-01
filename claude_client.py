@@ -40,7 +40,9 @@ class ClaudeClient:
     """Async client for Anthropic Claude with web search support."""
     
     CONTEXT_1M_BETA = "context-1m-2025-08-07"
+    WEB_FETCH_BETA = "web-fetch-2025-09-10"
     WEB_SEARCH_TOOL_TYPE = "web_search_20250305"
+    WEB_FETCH_TOOL_TYPE = "web_fetch_20250910"
 
     def __init__(self):
         self.client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
@@ -51,6 +53,8 @@ class ClaudeClient:
         betas: list[str] = []
         if settings.ENABLE_1M_CONTEXT:
             betas.append(self.CONTEXT_1M_BETA)
+        if settings.ENABLE_WEB_FETCH:
+            betas.append(self.WEB_FETCH_BETA)
         self.extra_headers: dict[str, str] = (
             {"anthropic-beta": ",".join(betas)} if betas else {}
         )
@@ -63,13 +67,20 @@ class ClaudeClient:
             self.thinking_param = {"type": "adaptive"}
             self.output_config = {"effort": settings.THINKING_EFFORT}
 
-        self.tools: list[dict] | None = None
+        tools: list[dict] = []
         if settings.ENABLE_WEB_SEARCH:
-            self.tools = [{
+            tools.append({
                 "type": self.WEB_SEARCH_TOOL_TYPE,
                 "name": "web_search",
                 "max_uses": settings.WEB_SEARCH_MAX_USES,
-            }]
+            })
+        if settings.ENABLE_WEB_FETCH:
+            tools.append({
+                "type": self.WEB_FETCH_TOOL_TYPE,
+                "name": "web_fetch",
+                "max_uses": settings.WEB_FETCH_MAX_USES,
+            })
+        self.tools: list[dict] | None = tools or None
     
     def _build_system_prompt(self, memory_text: str = "") -> str:
         """Compose system prompt with optional long-term memory section."""
