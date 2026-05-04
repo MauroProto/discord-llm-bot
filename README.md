@@ -1,183 +1,279 @@
-# Lain - Bot de Discord con Claude AI
+<div align="center">
 
-Bot personalidad "Lain" para grupos privados de Discord. Lee el historial del chat, guarda contexto en archivos `.md`, y responde usando la API de Claude con personalidad divertida, directa y sin filtros. Ideal para preparar hackathons en grupos de 3 personas.
+# Lain — Discord bot with Claude + ElevenLabs voice
 
-## Caracteristicas
+A Discord bot that **chats with Claude** and **talks in voice channels** with ElevenLabs.
+It listens to the call, replies with TTS, mirrors info to text, and keeps a single unified context across both.
 
-- **Responde a @Lain** — Mencionala y te responde con todo el contexto del chat
-- **Guarda contexto en .md** — Organizado por fecha (`contexts/YYYY-MM-DD.md`) y threads
-- **Busqueda web** — Fallback con Tavily/SerpAPI/DuckDuckGo cuando Claude necesita info actualizada
-- **Personalidad propia** — Divertida, energetica, critica con sentido, directa, sin filtros
-- **100% privado** — Solo funciona en el servidor y canal que configures
-- **Comandos utiles** — Resumen, busqueda manual, info del bot, contexto guardado
-- **Respuestas espontaneas** (opt-in) — Puede intervenir sola cuando detecta ideas de hackathon
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![discord.py](https://img.shields.io/badge/discord.py-2.7-5865F2.svg?logo=discord&logoColor=white)](https://github.com/Rapptz/discord.py)
+[![Anthropic](https://img.shields.io/badge/Anthropic-Claude%204.x-D97757.svg)](https://anthropic.com/)
+[![ElevenLabs](https://img.shields.io/badge/ElevenLabs-TTS%20%2B%20Scribe-000000.svg)](https://elevenlabs.io/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Deploy on Railway](https://img.shields.io/badge/Railway-deployable-0B0D0E.svg?logo=railway&logoColor=white)](https://railway.app/)
 
-## Comandos
+</div>
 
-| Comando | Descripcion |
-|---------|-------------|
-| `@Lain <mensaje>` | Habla con Lain, lee historial y responde con contexto |
-| `!resumen [N]` | Resumen de los ultimos N mensajes (default 50) |
-| `!contexto` | Manda el archivo .md de hoy con todo el contexto |
-| `!buscar <query>` | Busqueda web manual |
-| `!join` | Lain se mete a tu canal de voz (alias: `entra`, `vozon`) |
-| `!leave` | Lain sale del canal de voz (alias: `sali`, `vozoff`, `chau`) |
-| `!sayvoz <texto>` | Forzar TTS en el VC actual |
-| `!lain` | Info del bot |
-| `!helpbot` | Ayuda |
+---
 
-También funciona en lenguaje natural mencionándola: `@Lain metete al canal de voz` / `@Lain andate del canal`.
+## What it does
 
-## Voz (ElevenLabs TTS + STT)
+- **Text chat** — mention `@Lain` and she replies with full channel context, long-term memory of the last *N* days, and Claude Opus reasoning.
+- **Voice chat** — `!join` and she enters a voice channel, transcribes everyone with ElevenLabs Scribe, replies through the speaker with ElevenLabs TTS, and remembers it all.
+- **Unified memory** — voice transcripts and text messages live in the same daily `.md`. She remembers in chat what was said in voice, and vice versa.
+- **Sends to chat from voice** — Claude can decide on its own to drop a link, code snippet or list into the text channel while it's still talking on the call (`[CHAT: ...]` / `[SOLO_CHAT: ...]` inline marks).
+- **Production-tested workarounds** — DAVE (Discord's new E2EE protocol) decryption patch, anti-echo, cancel-on-new-input, and a Scribe HTTP client that doesn't hang on long audio.
 
-Lain puede unirse a un canal de voz, **escuchar** lo que se dice (Scribe STT), **hablar** por TTS de ElevenLabs, y **mantener un único contexto unificado** entre lo que pasa en el chat de texto y lo que se dice por voz: todo se guarda en el mismo `data/contexts/YYYY-MM-DD.md` con marca `#VOZ:<canal>`, y la memoria de los últimos días sigue funcionando igual.
-
-### Setup
-
-1. Crear cuenta en [ElevenLabs](https://elevenlabs.io) y sacar API key en Settings → API Keys.
-2. Elegir una voz en la [Voice Library](https://elevenlabs.io/app/voice-library) y copiar su `voice_id`.
-3. Agregar al `.env`:
-   ```bash
-   VOICE_ENABLED=true
-   ELEVENLABS_API_KEY=sk_...
-   ELEVENLABS_VOICE_ID=AwmgI32PB22lsT7wnBFH
-   ELEVENLABS_TTS_MODEL=eleven_turbo_v2_5
-   VOICE_LANGUAGE=spa
-   ```
-4. Re-invitar al bot con permisos extra de Discord: `Connect`, `Speak`, `Use Voice Activity` (Voice Channel Permissions).
-5. Si corrés local, instalá `ffmpeg`:
-   - macOS: `brew install ffmpeg opus`
-   - Linux: `apt install ffmpeg libopus0`
-   - Docker: ya está incluido en el `Dockerfile`.
-
-### Modelos TTS (latencia vs calidad)
-
-| Modelo | Latencia | Calidad | Notas |
-|--------|----------|---------|-------|
-| `eleven_v3` | ~1-2s | Máxima expresividad | **Default actual.** El más natural y emocional |
-| `eleven_turbo_v2_5` | ~300ms | Alta | Mejor opción si la latencia molesta |
-| `eleven_flash_v2_5` | ~75ms | Media | Para charla ultra-rápida, calidad menor |
-| `eleven_multilingual_v2` | ~1-2s | Alta | Para grabaciones |
-
-### Cómo funciona
-
-- `!join` (con vos en un VC) → Lain se conecta y empieza a escuchar.
-- Lain transcribe cada turno de voz con ElevenLabs Scribe y lo guarda en el .md diario.
-- Si `VOICE_ALWAYS_RESPOND=true` (default) participa de toda la charla. Si lo ponés en false, solo responde cuando alguien dice "Lain" (o `VOICE_WAKE_WORDS`).
-- Genera respuestas con Claude usando el contexto unificado (texto + voz + memoria de 14 días) y las dice por TTS.
-- `!leave` para que se vaya. Si todos se van del VC, se desconecta sola.
-
-### Tuning útil
-
-- `VOICE_SILENCE_MS=800` → cuántos ms de silencio cierran un turno.
-- `VOICE_COOLDOWN_MS=1500` → mínimo entre dos respuestas seguidas (evita atropellarse).
-- `VOICE_MIN_TURN_CHARS=3` → ignora ruido tipo "eh", "ah".
-- `VOICE_MAX_RESPONSE_CHARS=600` → trunca respuestas TTS para que no eternice.
-- `VOICE_MIRROR_TEXT=true` → si está en VC, dice también por voz lo que responde en el chat de texto.
-
-## Setup rapido (Docker)
-
-1. Copiar `.env.example` a `.env` y completar las credenciales
-2. `docker compose up --build`
-
-## Deploy en Railway (gratis, one-click)
-
-1. Crear cuenta en [Railway](https://railway.app) (logueate con Google/GitHub)
-2. New Project → Deploy from Repo (o Deploy from Dockerfile)
-3. Subi el codigo (o conecta tu repo de GitHub)
-4. En "Variables", agrega las env vars del `.env.example`
-5. Clickea "Deploy"
-
-Railway te da $5/mes de credito gratis, alcanza para el bot.
-
-## Crear el bot en Discord
-
-1. Anda a [Discord Developer Portal](https://discord.com/developers/applications)
-2. New Application → dale nombre
-3. Sidebar: **Bot** → "Add Bot"
-4. Copia el **Token** (Reset Token si no existe)
-5. Activa **Message Content Intent**, **Server Members Intent**, **Presence Intent**
-6. Guarda cambios
-7. Sidebar: **OAuth2** → **URL Generator**
-   - Scopes: tilda `bot`
-   - Bot Permissions: Send Messages, Read Message History, View Channels, Embed Links
-8. Copia la URL, pegala en el navegador, elegi tu servidor
-
-## Sacar IDs de Discord
-
-- **Server ID**: clic derecho en el servidor (arriba a la izquierda) → Copiar ID del servidor
-- **Channel ID**: clic derecho en el canal → Copiar ID del canal
-- (Si no aparece "Copiar ID", activa Modo Desarrollador en Discord: Configuracion → Avanzado)
-
-## Requisitos de permisos del bot
-
-| Permiso | Por que |
-|---------|---------|
-| Send Messages | Para responder |
-| Read Message History | Para leer el contexto del chat |
-| View Channels | Para ver los canales |
-| Embed Links | Para compartir links |
-| Message Content Intent | Para leer el contenido de los mensajes |
-| Connect (voz) | Para unirse al canal de voz |
-| Speak (voz) | Para hablar por TTS en el VC |
-| Use Voice Activity (voz) | Para detectar audio de los humanos |
-
-## Estructura del proyecto
+## Demo
 
 ```
-.
-├── bot.py              # Core del bot, event handlers, comandos
-├── claude_client.py    # Wrapper de Anthropic API
-├── context_manager.py  # Lectura/escritura de historial en .md
-├── search_client.py    # Busqueda web (Tavily/SerpAPI/DuckDuckGo)
-├── config.py           # Configuracion con pydantic-settings
-├── Dockerfile          # Multi-stage build
-├── docker-compose.yml  # Compose config
-├── railway.json        # One-click deploy Railway
-├── requirements.txt    # Dependencias
-├── .env.example        # Variables de entorno de ejemplo
-└── README.md           # Este archivo
+You (text):     @Lain qué hicimos ayer con el deploy?
+Lain (text):    Subiste el fix de DAVE a Railway anoche, anduvo todo. ✅
+
+You (text):     !join
+Lain (text):    🎙️ Estoy en General. Hablen tranqui que escucho y participo.
+
+You (voice):    "che pasame el link de la doc de Anthropic"
+Lain (voice):   "Te lo paso por chat ahora"
+Lain (text):    https://docs.anthropic.com
+
+You (voice):    "y el código para listar archivos en Python?"
+Lain (text):    ```python
+                from pathlib import Path
+                for f in Path(".").iterdir():
+                    print(f.name)
+                ```
+
+You (text, later): @Lain qué me pediste hace un rato por voz?
+Lain (text):    Me pediste el link de la doc de Anthropic y un snippet de Python.
 ```
 
-## Personalidad de Lain
+## Quick start
 
-Lain es una asistente AI con personalidad propia:
-- **Divertida y alegre**: tiene onda, usa humor, se rie de las burradas
-- **Critica con sentido**: evalua ideas honestamente, puede decir "es una cagada" o "es brillante"
-- **Directa y precisa**: dice las cosas como son, sin filtros, pero con carino
-- **Espontanea**: puede intervenir cuando detecta ideas de hackathon (configurable)
-- **Usa español rioplatense**: che, boludo/a, capo, etc.
+### 1. Discord setup
 
-Para cambiar la personalidad, setea `SYSTEM_PROMPT` en el `.env`.
+1. Create an application at <https://discord.com/developers/applications>.
+2. Add a **Bot**, copy its token.
+3. Enable the **Message Content**, **Server Members** and **Voice State** intents.
+4. Generate an OAuth2 invite URL with these permissions:
+   - `Send Messages`, `Read Message History`, `View Channels`, `Embed Links`
+   - `Connect`, `Speak`, `Use Voice Activity` (voice features)
+5. Invite the bot to your server.
 
-## Variables de entorno
+### 2. API keys
 
-| Variable | Requerida | Default | Descripcion |
-|----------|-----------|---------|-------------|
-| `DISCORD_BOT_TOKEN` | Si | - | Token del bot de Discord |
-| `ANTHROPIC_API_KEY` | Si | - | API key de Anthropic |
-| `ALLOWED_GUILD_ID` | Si | - | Solo responde en este servidor |
-| `ALLOWED_CHANNEL_ID` | No | - | Solo responde en este canal (opcional) |
-| `ANTHROPIC_MODEL` | No | claude-opus-4-7 | Modelo de Claude |
-| `ENABLE_1M_CONTEXT` | No | true | Activa ventana de 1M tokens (beta) |
-| `EXTENDED_THINKING` | No | true | Activa razonamiento extendido |
-| `THINKING_BUDGET_TOKENS` | No | 24000 | Tokens reservados para pensar |
-| `MAX_TOKENS` | No | 32000 | Max tokens por respuesta (output + thinking) |
-| `HISTORY_LIMIT` | No | 100 | Mensajes de historial a leer |
-| `TAVILY_API_KEY` | No | - | API key de Tavily (fallback busqueda) |
-| `SERPAPI_KEY` | No | - | API key de SerpAPI (fallback busqueda) |
-| `SPONTANEOUS_RESPONSE` | No | false | Responder sin ser mencionada |
-| `SPONTANEOUS_PROBABILITY` | No | 0.3 | Probabilidad de respuesta espontanea |
-| `DATA_DIR` | No | ./data | Directorio para archivos .md |
+| Service | Where | Purpose |
+|---|---|---|
+| Anthropic | <https://console.anthropic.com/> | Claude (chat + voice) |
+| ElevenLabs | <https://elevenlabs.io/app/settings/api-keys> | TTS + STT |
+| Tavily *(optional)* | <https://tavily.com/> | Web search fallback |
+| SerpAPI *(optional)* | <https://serpapi.com/> | Web search fallback |
 
-## Hosting alternativos (gratis)
+### 3. Configure
 
-| Servicio | Tier gratis | Notas |
-|----------|-------------|-------|
-| Railway | $5/mes | Recomendado, facil |
-| Fly.io | $5/mes | Buena alternativa |
-| Render | Gratis con limitaciones | El bot "duerme" despues de 15 min sin uso |
+```bash
+git clone https://github.com/MauroProto/discord-claude-bot.git
+cd discord-claude-bot
+cp .env.example .env
+# open .env and fill in your tokens / keys
+```
 
-## Licencia
+### 4. Run
 
-MIT - Hace lo que quieras.
+#### Local (macOS / Linux)
+
+```bash
+brew install ffmpeg opus libsodium      # macOS
+# sudo apt install ffmpeg libopus0      # Debian / Ubuntu
+
+pip install --pre -r requirements.txt   # --pre is required (voice-recv ships only alphas)
+python3 bot.py
+```
+
+#### Docker
+
+```bash
+docker compose up --build
+```
+
+#### Railway (one-click)
+
+1. Connect this repo on <https://railway.app/>.
+2. The `Dockerfile` and `railway.json` are picked up automatically.
+3. Paste your environment variables in the **Variables** tab.
+4. Deploy. The bot starts immediately and reconnects on restart.
+
+## Commands
+
+| Command | Aliases | Action |
+|---|---|---|
+| `@Lain <message>` | — | Reply with full chat context + memory |
+| `!resumen [N]` | — | Summarise the last *N* messages (default 50) |
+| `!contexto` | — | Send today's saved `.md` |
+| `!buscar <query>` | — | Manual web search fallback |
+| `!join` | `!entra`, `!vozon`, `!meteteacanal` | Join the configured voice channel |
+| `!leave` | `!sali`, `!vozoff`, `!chau` | Leave the voice channel |
+| `!sayvoz <text>` | — | Force a TTS line in the current VC |
+| `!lain`, `!helpbot` | — | Bot info / help |
+
+You can also use natural language: `@Lain metete al canal de voz` and `@Lain andate del canal` work too.
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         Discord (text + voice)                       │
+└────────────────┬─────────────────────────────────┬──────────────────┘
+                 │ messages                        │ RTP / DAVE
+                 ▼                                 ▼
+        ┌────────────────┐              ┌────────────────────┐
+        │     bot.py     │              │  voice_manager.py  │
+        │  (commands +   │              │  (per-guild        │
+        │   on_message)  │              │   sessions, VAD,   │
+        └────────┬───────┘              │   anti-echo, DAVE  │
+                 │                      │   monkey-patch)    │
+                 │                      └────────┬───────────┘
+                 │                               │ WAV (16k mono)
+                 │                               ▼
+                 │                      ┌────────────────────┐
+                 │                      │ elevenlabs_client  │
+                 │                      │ Scribe STT (HTTP)  │
+                 │                      └────────┬───────────┘
+                 │                               │ transcript
+                 ▼                               ▼
+        ┌──────────────────────────────────────────────────┐
+        │              context_manager.py                   │
+        │  Channel history + daily .md ← unified store →   │
+        │  load_recent_memory(days, max_chars)              │
+        └────────────────────────┬─────────────────────────┘
+                                 │ messages + memory
+                                 ▼
+                       ┌──────────────────────┐
+                       │   claude_client.py   │
+                       │  Opus 4.7 (chat) /   │
+                       │  Haiku 4.5 (voice)   │
+                       │  + prompt caching    │
+                       └─────────┬────────────┘
+                                 │ reply text
+                  ┌──────────────┴───────────────┐
+                  │                              │
+                  ▼                              ▼
+        ┌─────────────────┐           ┌──────────────────┐
+        │ Discord text    │           │ ElevenLabs TTS    │
+        │  reply / chat   │           │ (turbo / v3)      │
+        └─────────────────┘           └────────┬──────────┘
+                                               │ MP3 / Opus
+                                               ▼
+                                      ┌──────────────────┐
+                                      │  ffmpeg + Discord │
+                                      │   voice playback  │
+                                      └──────────────────┘
+```
+
+### Voice pipeline highlights
+
+- **DAVE patch** — Discord migrated to a new end-to-end encryption protocol in 2026. The upstream `discord-ext-voice-recv 0.5.2a179` doesn't decrypt DAVE, so we monkey-patch `PacketDecoder` at runtime to call `dave_session.decrypt()` before Opus decoding. Code is inlined from upstream [PR #54](https://github.com/imayhaveborkedit/discord-ext-voice-recv/pull/54).
+- **HTTP STT** — the `elevenlabs` async SDK hangs on long audio without raising. We use `aiohttp` directly with an explicit 20-second timeout.
+- **Anti-echo** — when the bot is speaking, incoming audio is ignored (`_is_speaking` flag plus 800 ms guard) so it doesn't barge-in on its own voice.
+- **VAD** — per-packet RMS gate filters silence frames so the silence-timer can actually fire.
+- **Cancel on new input** — only the most recent user turn is answered. Pending Claude/TTS gets cancelled, but the STT keeps running in an independent task so it never gets killed mid-request.
+- **Prompt caching** — long-term memory becomes a cached system block, so the second voice reply onward only reprocesses the delta.
+
+## Configuration
+
+Everything is configured via `.env` (or your platform's secrets manager). See [`.env.example`](.env.example) for the full list with defaults and comments.
+
+The most useful knobs:
+
+| Variable | Default | Notes |
+|---|---|---|
+| `ANTHROPIC_MODEL` | `claude-opus-4-7` | Text chat model |
+| `VOICE_CLAUDE_MODEL` | `claude-haiku-4-5` | Voice model — Haiku is 3-5× faster than Opus and good enough for short spoken replies |
+| `EXTENDED_THINKING` | `true` | Adaptive thinking in chat |
+| `VOICE_EXTENDED_THINKING` | `false` | Off in voice for low latency |
+| `ELEVENLABS_TTS_MODEL` | `eleven_turbo_v2_5` | `eleven_v3` is more expressive (and supports inline audio tags), but ~2× slower |
+| `VOICE_SILENCE_MS` | `1000` | Silence (ms) that closes a turn |
+| `VOICE_MAX_TURN_SECONDS` | `15` | Force-flush long monologues |
+| `VOICE_IDLE_TIMEOUT_SECONDS` | `120` | Auto-leave the VC if nobody speaks |
+| `VOICE_MEMORY_MAX_CHARS` | `-1` | `-1` = use full long-term memory; `0` = none (faster) |
+| `MEMORY_DAYS` | `14` | Days of saved context to inject as long-term memory |
+
+## Storage
+
+Daily context lives in `./data/contexts/YYYY-MM-DD.md` (one file per day, both text and voice in the same file with `#VOZ:<channel>` tags for voice exchanges). Threads get their own files in `./data/threads/`.
+
+For Railway, mount a persistent volume on `/app/data`. For local Docker, the included `docker-compose.yml` already does this.
+
+## Latency
+
+A typical voice round-trip after the cache is warm:
+
+```
+silence detection   ~1.0 s
+ElevenLabs Scribe   ~1.5 s
+Claude Haiku (cached) ~1.0 s
+ElevenLabs Turbo TTS ~0.7 s
+network              ~0.3 s
+─────────────────── ──────
+total perceived     ~3.5–5 s
+```
+
+Streaming TTS (which would shave 1-2 seconds off the perceived latency) is on the roadmap.
+
+## Project files
+
+| File | Purpose |
+|---|---|
+| `bot.py` | Discord event handlers, command definitions, entrypoint |
+| `config.py` | Pydantic settings loader |
+| `claude_client.py` | Anthropic SDK wrapper with prompt caching and per-mode model overrides |
+| `context_manager.py` | Reads channel history, persists daily `.md`, loads long-term memory |
+| `elevenlabs_client.py` | HTTP client for ElevenLabs TTS and Scribe STT |
+| `voice_manager.py` | Voice sessions, DAVE monkey-patch, VAD, anti-echo, cancel logic |
+| `search_client.py` | Tavily / SerpAPI / DuckDuckGo fallback search |
+| `Dockerfile` | Python 3.11 + ffmpeg + libopus production image |
+| `docker-compose.yml` | Local dev with a persistent `./data` volume |
+| `railway.json` | Railway deploy descriptor |
+| `requirements.txt` | Python dependencies (install with `--pre`) |
+| `SECURITY.md` | Security policy |
+| `CONTRIBUTING.md` | Developer guide |
+| `LICENSE` | MIT |
+
+## Roadmap
+
+- [ ] Streaming TTS (start playback while Claude is still generating)
+- [ ] Streaming STT (Deepgram/AssemblyAI) for sub-2 s latency
+- [ ] Smart barge-in (interrupt the bot only with sustained voice activity)
+- [ ] Per-user voice profiles (different ElevenLabs voices for different roles)
+- [ ] Slash commands `/join`, `/leave`, etc. instead of prefix commands
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for the threat model and how to report vulnerabilities. Short version:
+
+- **Never commit `.env`** — it's in `.gitignore` for a reason.
+- **Use a platform secrets manager** in production (Railway Variables, GitHub Secrets, etc.).
+- **Set `ALLOWED_GUILD_ID`** so the bot can't be invited to servers you don't control.
+
+## Contributing
+
+PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the conventions and the things that need extra care (DAVE patch, anti-echo, cancel logic, prompt caching).
+
+## License
+
+[MIT](LICENSE) — do whatever you want, just keep the copyright notice.
+
+## Acknowledgements
+
+- [discord.py](https://github.com/Rapptz/discord.py) and [discord-ext-voice-recv](https://github.com/imayhaveborkedit/discord-ext-voice-recv) for everything voice-related.
+- [Anthropic](https://anthropic.com/) for the Claude family of models.
+- [ElevenLabs](https://elevenlabs.io/) for TTS and Scribe.
+- [@rdphillips7](https://github.com/rdphillips7)'s [PR #54](https://github.com/imayhaveborkedit/discord-ext-voice-recv/pull/54) — the DAVE decryption logic that voice receive needed in 2026 (replicated inline as a runtime monkey-patch).
+
+---
+
+<div align="center">
+
+Made for late-night hackathon calls — and for keeping the conversation going whether you're typing or talking.
+
+</div>
