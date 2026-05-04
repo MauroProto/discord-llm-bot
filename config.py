@@ -179,6 +179,14 @@ class Config(BaseSettings):
         default=False,
         description="Si está en VC, leer también respuestas del canal de texto"
     )
+    VOICE_IDLE_TIMEOUT_SECONDS: int = Field(
+        default=120,
+        description="Si no llega audio por este tiempo, Lain se va sola del VC. 0 = desactivado."
+    )
+    VOICE_IDLE_CHECK_SECONDS: int = Field(
+        default=15,
+        description="Cada cuántos segundos chequear el timeout de inactividad."
+    )
     VOICE_MAX_RESPONSE_CHARS: int = Field(
         default=600,
         description="Truncar respuestas TTS más largas que esto"
@@ -199,6 +207,16 @@ class Config(BaseSettings):
     VOICE_THINKING_EFFORT: str = Field(
         default="low",
         description="Esfuerzo de razonamiento solo para voz: low | medium | high | xhigh | max"
+    )
+    # Modelo Claude solo para voz (independiente del chat). Haiku es ~3-5x más rápido que Opus.
+    VOICE_CLAUDE_MODEL: str = Field(
+        default="claude-haiku-4-5",
+        description="Modelo Claude solo para voz. Haiku=más rápido. Vacío=usa ANTHROPIC_MODEL"
+    )
+    # Cuánta memoria a largo plazo cargar en voz (en chars). 0 = ninguna (mucho más rápido).
+    VOICE_MEMORY_MAX_CHARS: int = Field(
+        default=0,
+        description="Caracteres de memoria .md a inyectar en voz. 0=ninguno (rápido), -1=usa MEMORY_MAX_CHARS"
     )
 
     # ElevenLabs voice_settings (afectan cómo suena la voz)

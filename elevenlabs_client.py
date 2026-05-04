@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import io
 from typing import Optional
+
+import aiohttp
 
 from config import settings
 
@@ -81,61 +84,59 @@ class ElevenLabsClient:
         audio_bytes: bytes,
         filename: str = "audio.wav",
         language_code: Optional[str] = None,
+        timeout_seconds: float = 20.0,
     ) -> dict:
-        """Transcribe audio con Scribe.
+        """Transcribe audio con Scribe via HTTP REST directo.
+
+        El SDK async-elevenlabs en 2.34.0 a veces queda colgado con audios
+        largos. Usamos aiohttp directo, que respeta timeouts.
 
         Devuelve dict con:
           - text: str  (transcript limpio)
           - audio_events: list[str]  (ej: ['laughter', 'applause'])
-          - speakers: list[str] | None (si Scribe diariza)
-        Eventos detectados se inyectan inline en el texto que se manda a Claude
-        para que pueda adecuar su respuesta y emoción.
         """
-        client = self._ensure_client()
+        if not settings.ELEVENLABS_API_KEY:
+            raise RuntimeError("ELEVENLABS_API_KEY no configurada")
+
         lang = language_code or settings.VOICE_LANGUAGE
-        buf = io.BytesIO(audio_bytes)
-        buf.name = filename
+        url = "https://api.elevenlabs.io/v1/speech-to-text"
 
-        # tag_audio_events=True → Scribe detecta risas, aplausos, etc.
-        # diarize=True → identifica hablantes (útil si hay varios en el mismo buffer)
-        try:
-            result = await client.speech_to_text.convert(
-                file=buf,
-                model_id=settings.ELEVENLABS_STT_MODEL,
-                language_code=lang,
-                tag_audio_events=True,
-                diarize=False,  # ya bufferamos por user_id en VC, no hace falta
-            )
-        except TypeError:
-            # SDK antiguo: fallback sin esos params
-            buf.seek(0)
-            result = await client.speech_to_text.convert(
-                file=buf,
-                model_id=settings.ELEVENLABS_STT_MODEL,
-                language_code=lang,
-            )
-
-        text = getattr(result, "text", None)
-        if text is None and isinstance(result, dict):
-            text = result.get("text", "")
-        text = (text or "").strip()
-
-        # Extraer audio events (palabras tipo "[laughter]", "[applause]")
-        # Scribe los devuelve inline en el texto Y/O en .words con type='audio_event'
-        audio_events: list[str] = []
-        words = getattr(result, "words", None) or (
-            result.get("words") if isinstance(result, dict) else None
+        form = aiohttp.FormData()
+        form.add_field("model_id", settings.ELEVENLABS_STT_MODEL)
+        form.add_field("language_code", lang)
+        form.add_field("tag_audio_events", "true")
+        form.add_field("diarize", "false")
+        form.add_field(
+            "file",
+            audio_bytes,
+            filename=filename,
+            content_type="audio/wav",
         )
-        if words:
-            for w in words:
-                w_type = getattr(w, "type", None) or (
-                    w.get("type") if isinstance(w, dict) else None
-                )
-                w_text = getattr(w, "text", None) or (
-                    w.get("text") if isinstance(w, dict) else None
-                )
-                if w_type == "audio_event" and w_text:
-                    audio_events.append(w_text.strip("[]"))
+
+        headers = {"xi-api-key": settings.ELEVENLABS_API_KEY}
+        timeout = aiohttp.ClientTimeout(total=timeout_seconds)
+
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(url, data=form, headers=headers) as resp:
+                body = await resp.text()
+                if resp.status != 200:
+                    raise RuntimeError(
+                        f"Scribe HTTP {resp.status}: {body[:200]}"
+                    )
+                import json
+                try:
+                    result = json.loads(body)
+                except Exception as e:
+                    raise RuntimeError(f"Scribe respuesta no-JSON: {body[:200]}") from e
+
+        text = (result.get("text") or "").strip()
+
+        audio_events: list[str] = []
+        for w in result.get("words", []) or []:
+            if isinstance(w, dict) and w.get("type") == "audio_event":
+                t = w.get("text") or ""
+                if t:
+                    audio_events.append(t.strip("[]"))
 
         return {
             "text": text,
