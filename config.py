@@ -112,6 +112,117 @@ class Config(BaseSettings):
         description="Healthcheck interval in seconds"
     )
 
+    # Voice (ElevenLabs TTS + STT)
+    VOICE_ENABLED: bool = Field(
+        default=False,
+        description="Master switch para funcionalidad de voz"
+    )
+    VOICE_CHANNEL_ID: int | None = Field(
+        default=None,
+        description=(
+            "ID del canal de voz por defecto. Si está seteado, !join se conecta "
+            "siempre a este canal (no importa dónde estés vos). Si es None, "
+            "!join usa el canal de voz en el que estés conectado."
+        )
+    )
+    ELEVENLABS_API_KEY: str | None = Field(
+        default=None,
+        description="API key de ElevenLabs (requerida si VOICE_ENABLED=true)"
+    )
+    ELEVENLABS_VOICE_ID: str = Field(
+        default="AwmgI32PB22lsT7wnBFH",
+        description="Voice ID de ElevenLabs (configurable en .env)"
+    )
+    ELEVENLABS_TTS_MODEL: str = Field(
+        default="eleven_v3",
+        description=(
+            "Modelo TTS de ElevenLabs. Opciones: "
+            "eleven_v3 (el más expresivo, recomendado por el usuario), "
+            "eleven_turbo_v2_5 (balance calidad/latencia ~300ms, multilingüe), "
+            "eleven_flash_v2_5 (ultra baja latencia ~75ms, calidad menor), "
+            "eleven_multilingual_v2 (alta calidad, latencia ~1-2s)"
+        )
+    )
+    ELEVENLABS_STT_MODEL: str = Field(
+        default="scribe_v1",
+        description="Modelo STT de ElevenLabs"
+    )
+    VOICE_LANGUAGE: str = Field(
+        default="spa",
+        description="Código ISO-639-3 del idioma para STT"
+    )
+    VOICE_ALWAYS_RESPOND: bool = Field(
+        default=True,
+        description="Si true, contesta a todo lo que oye en VC sin esperar wake word"
+    )
+    VOICE_WAKE_WORDS: str = Field(
+        default="lain",
+        description="CSV de wake words (solo se usan si VOICE_ALWAYS_RESPOND=false)"
+    )
+    VOICE_MIN_TURN_CHARS: int = Field(
+        default=3,
+        description="Ignora transcripts más cortos que esto (filtra ruido tipo 'eh', 'ah')"
+    )
+    VOICE_COOLDOWN_MS: int = Field(
+        default=1500,
+        description="Tiempo mínimo entre dos respuestas de Lain en VC"
+    )
+    VOICE_SILENCE_MS: int = Field(
+        default=800,
+        description="Silencio que cierra un turno de habla"
+    )
+    VOICE_MAX_TURN_SECONDS: int = Field(
+        default=30,
+        description="Máximo de segundos de un turno antes de forzar flush"
+    )
+    VOICE_MIRROR_TEXT: bool = Field(
+        default=False,
+        description="Si está en VC, leer también respuestas del canal de texto"
+    )
+    VOICE_MAX_RESPONSE_CHARS: int = Field(
+        default=600,
+        description="Truncar respuestas TTS más largas que esto"
+    )
+    VOICE_RECENT_TURNS: int = Field(
+        default=30,
+        description="Número de turnos de voz recientes a inyectar como contexto inmediato"
+    )
+
+    # Razonamiento de Claude en modo voz (independiente del chat)
+    VOICE_EXTENDED_THINKING: bool = Field(
+        default=False,
+        description=(
+            "Si false, Claude NO razona en modo voz (mínima latencia). "
+            "Si true, usa VOICE_THINKING_EFFORT. El chat normal sigue con EXTENDED_THINKING/THINKING_EFFORT."
+        )
+    )
+    VOICE_THINKING_EFFORT: str = Field(
+        default="low",
+        description="Esfuerzo de razonamiento solo para voz: low | medium | high | xhigh | max"
+    )
+
+    # ElevenLabs voice_settings (afectan cómo suena la voz)
+    VOICE_SPEED: float = Field(
+        default=0.92,
+        description="Velocidad de habla. 1.0 = normal, <1 = más pausada, >1 = más rápida. Recomendado 0.88-0.95 para charla natural."
+    )
+    VOICE_STABILITY: float = Field(
+        default=0.5,
+        description="0-1. Mayor = voz más consistente y predecible; menor = más expresiva pero variable."
+    )
+    VOICE_SIMILARITY_BOOST: float = Field(
+        default=0.8,
+        description="0-1. Cuán fielmente la salida sigue el timbre de la voz original."
+    )
+    VOICE_STYLE: float = Field(
+        default=0.15,
+        description="0-1. Exageración estilística; un poco de style ayuda a que suene más natural y menos robot."
+    )
+    VOICE_USE_SPEAKER_BOOST: bool = Field(
+        default=True,
+        description="Amplifica la similitud con el hablante original."
+    )
+
 
 # Global config instance
 settings = Config()

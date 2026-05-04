@@ -139,6 +139,89 @@ class ClaudeClient:
         except Exception as e:
             return f"Ups, algo se rompió. Reintentame en un toque. ({_clean_err(e)})"
     
+    VOICE_SUFFIX = (
+        "\n\n---\n\n"
+        "# Modo voz (call de Discord)\n\n"
+        "Esta respuesta se va a leer en voz alta por el canal de voz de Discord usando ElevenLabs v3.\n\n"
+        "## Reglas de formato\n"
+        "- Máximo 1 o 2 oraciones cortas. Pensá cómo hablarías en una llamada.\n"
+        "- NADA de markdown, asteriscos, viñetas, headers, código.\n"
+        "- NADA de emojis ni símbolos raros (el TTS los lee literal).\n"
+        "- NADA de URLs largas ni listas numeradas.\n"
+        "- Si te preguntan algo que requiere mucha info, decí lo esencial en una frase "
+        "y ofrecé mandar el resto por el chat de texto.\n"
+        "- Mantené tu personalidad de Lain (rioplatense, femenino, directa, con onda).\n\n"
+        "## Detección emocional y respuesta\n"
+        "Cuando alguien habla, en su transcripción podés ver entre paréntesis al final "
+        "los eventos de audio que detectamos (ej: '(laughter)', '(sigh)'). Usalos para "
+        "leer el clima del grupo y adecuar tu respuesta. Si alguien se cagó de risa, "
+        "vos también estás en clima de joda. Si alguien suena cansado, bajá un cambio.\n\n"
+        "## Audio tags de ElevenLabs v3 (¡importantes!)\n"
+        "Podés meter audio tags entre corchetes en tu respuesta y v3 los renderiza como "
+        "emoción real al hablar. Usalos cuando aporten — no abuses, 0-2 por respuesta máximo.\n"
+        "Tags útiles:\n"
+        "  [laughs], [laughs softly], [chuckles] — para risas reales\n"
+        "  [whispers] — para bajar la voz, conspiración o ternura\n"
+        "  [sighs] — cuando algo da fiaca o resignación\n"
+        "  [excited] — entusiasmo genuino\n"
+        "  [sad], [thoughtful] — emociones marcadas\n"
+        "  [sarcastic] — para chicanas obvias\n"
+        "Ejemplos buenos:\n"
+        "  \"[laughs] no boluda, eso es una cagada total\"\n"
+        "  \"[sighs] dale, lo intentamos de nuevo\"\n"
+        "  \"[whispers] entre nos, esa idea está buenísima\"\n"
+        "Si no aportan, no los pongas. Sonar natural > sonar dramática."
+    )
+
+    async def generate_voice_response(
+        self,
+        messages: list[dict],
+        memory_text: str = "",
+        max_chars: int | None = None,
+    ) -> str:
+        """Igual que generate_response pero tuneado para salida hablada (TTS).
+
+        Overridea thinking/effort según VOICE_EXTENDED_THINKING / VOICE_THINKING_EFFORT
+        SIN tocar la config global del chat. El chat normal sigue con su nivel
+        configurado (default: max).
+        """
+        max_chars = max_chars or settings.VOICE_MAX_RESPONSE_CHARS
+
+        # Snapshot de config actual
+        original_system = self.system_prompt
+        original_thinking = self.thinking_param
+        original_output = self.output_config
+
+        try:
+            # 1) System prompt: agrega instrucciones de modo voz
+            self.system_prompt = original_system + self.VOICE_SUFFIX
+
+            # 2) Razonamiento: lo bajamos o lo apagamos para reducir latencia
+            if not settings.VOICE_EXTENDED_THINKING:
+                # Apagado: respuesta directa, mínima latencia
+                self.thinking_param = None
+                self.output_config = None
+            else:
+                # Encendido pero con effort más bajo
+                self.thinking_param = {"type": "adaptive"}
+                self.output_config = {"effort": settings.VOICE_THINKING_EFFORT}
+
+            response = await self.generate_response(
+                messages=messages,
+                memory_text=memory_text,
+            )
+        finally:
+            # Restauramos siempre (chat sigue con MAX)
+            self.system_prompt = original_system
+            self.thinking_param = original_thinking
+            self.output_config = original_output
+
+        # Truncado defensivo si Claude se zarpó
+        if len(response) > max_chars:
+            cut = response[:max_chars].rsplit(".", 1)[0]
+            response = (cut + ".") if cut else response[:max_chars]
+        return response
+
     async def analyze_conversation(self, history_text: str, task: str) -> str:
         """Analyze a conversation with a specific task (e.g., summarize)."""
         messages = [{

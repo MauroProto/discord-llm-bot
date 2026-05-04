@@ -3,6 +3,7 @@
 import base64
 import os
 import random
+import re
 from collections import deque
 import aiohttp
 import discord
@@ -13,11 +14,13 @@ from config import settings
 from context_manager import context_manager
 from claude_client import claude_client
 from search_client import search_client
+from voice_manager import voice_manager, VOICE_RECV_AVAILABLE
 
 # Discord intents
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
+intents.voice_states = True
 
 bot = commands.Bot(
     command_prefix=settings.BOT_PREFIX,
@@ -252,6 +255,18 @@ async def on_message(message: discord.Message):
     # Mark as processed
     _mark_processed(message.id)
 
+    # Detección por lenguaje natural: "metete al canal de voz" / "andate del canal"
+    if bot.user and bot.user.mentioned_in(message):
+        content = message.content
+        if _LEAVE_NL_RE.search(content):
+            ctx = await bot.get_context(message)
+            await _do_leave(ctx)
+            return
+        if _JOIN_NL_RE.search(content):
+            ctx = await bot.get_context(message)
+            await _do_join(ctx)
+            return
+
     try:
         async with message.channel.typing():
             # Fetch channel history (excluding the current message to avoid duplication)
@@ -304,6 +319,23 @@ async def on_message(message: discord.Message):
                         await message.reply(chunk, mention_author=False)
                     else:
                         await message.channel.send(chunk)
+
+            # Mirror a voz si Lain está conectada al VC del mismo guild
+            if (
+                settings.VOICE_MIRROR_TEXT
+                and message.guild
+                and voice_manager.is_connected(message.guild.id)
+            ):
+                session = voice_manager.get(message.guild.id)
+                if session:
+                    # Trunca para TTS
+                    spoken = response
+                    if len(spoken) > settings.VOICE_MAX_RESPONSE_CHARS:
+                        spoken = spoken[:settings.VOICE_MAX_RESPONSE_CHARS].rsplit(".", 1)[0] + "."
+                    try:
+                        await session.speak(spoken)
+                    except Exception as e:
+                        print(f"[VOZ] mirror error: {e}")
     
     except Exception as e:
         print(f"Error en on_message: {e}")
@@ -427,11 +459,148 @@ async def helpbot_cmd(ctx: commands.Context):
         f"`{settings.BOT_PREFIX}resumen [N]` — Resumo los ultimos N mensajes (default 50)\n"
         f"`{settings.BOT_PREFIX}contexto` — Te mando el archivo .md de hoy con todo el contexto guardado\n"
         f"`{settings.BOT_PREFIX}buscar <query>` — Busco en internet (fallback manual)\n"
+        f"`{settings.BOT_PREFIX}join` — Me meto a tu canal de voz (alias: `entra`, `vozon`)\n"
+        f"`{settings.BOT_PREFIX}leave` — Salgo del canal de voz (alias: `sali`, `vozoff`, `chau`)\n"
+        f"`{settings.BOT_PREFIX}sayvoz <texto>` — Forzá que diga algo por voz\n"
         f"`{settings.BOT_PREFIX}lain` — Info del bot\n"
         f"`{settings.BOT_PREFIX}helpbot` — Este mensaje\n"
-        f"\n**Tip:** Mencioname (@Lain) en cualquier momento y participo de la conversacion con todo el contexto del chat."
+        f"\n**Tip:** Mencioname (@Lain) en cualquier momento y participo de la conversacion con todo el contexto del chat. "
+        f"También podés decirme en lenguaje natural «metete al canal de voz» o «andate del canal»."
     )
     await ctx.reply(help_text, mention_author=False)
+
+
+# ─── Voz ───
+
+_JOIN_NL_RE = re.compile(
+    r"\b(metete|met[ée]te|entr[áa]|sumate|veni|veng[áa]s|connectate|conect[áa]te|"
+    r"unite|met[ée]te al|andate al)\b.*\b(canal\s+de\s+voz|voz|vc|call|llamada)\b",
+    re.IGNORECASE,
+)
+_LEAVE_NL_RE = re.compile(
+    r"\b(salí|sali|salite|andate|chau|fuera|desconect[áa]te|salir|sal[íi] del)\b.*"
+    r"\b(canal\s+de\s+voz|voz|vc|call|llamada)\b",
+    re.IGNORECASE,
+)
+
+
+def _voice_disabled_msg() -> str:
+    if not settings.VOICE_ENABLED:
+        return "La voz está desactivada (VOICE_ENABLED=false en .env)."
+    if not settings.ELEVENLABS_API_KEY:
+        return "Falta ELEVENLABS_API_KEY en .env, no puedo hablar."
+    if not VOICE_RECV_AVAILABLE:
+        return "Falta el paquete `discord-ext-voice-recv`. Reinstalá las dependencias."
+    return ""
+
+
+async def _do_join(ctx: commands.Context) -> None:
+    err = _voice_disabled_msg()
+    if err:
+        await ctx.reply(err, mention_author=False)
+        return
+    if not ctx.guild:
+        await ctx.reply("Esto solo funciona en un servidor.", mention_author=False)
+        return
+
+    vc: discord.VoiceChannel | None = None
+
+    # 1) Si VOICE_CHANNEL_ID está configurado, usar ese canal fijo
+    if settings.VOICE_CHANNEL_ID:
+        ch = ctx.guild.get_channel(settings.VOICE_CHANNEL_ID)
+        if ch is None:
+            try:
+                ch = await bot.fetch_channel(settings.VOICE_CHANNEL_ID)
+            except Exception as e:
+                await ctx.reply(
+                    f"No encuentro el canal de voz `{settings.VOICE_CHANNEL_ID}`: {e}",
+                    mention_author=False,
+                )
+                return
+        if not isinstance(ch, discord.VoiceChannel):
+            await ctx.reply(
+                f"El canal `{settings.VOICE_CHANNEL_ID}` no es un canal de voz.",
+                mention_author=False,
+            )
+            return
+        vc = ch
+
+    # 2) Sino, usar el VC en el que está el usuario
+    else:
+        if not isinstance(ctx.author, discord.Member) or not ctx.author.voice or not ctx.author.voice.channel:
+            await ctx.reply(
+                "Metete vos primero a un canal de voz, capo, así sé a cuál unirme. "
+                "(o seteá VOICE_CHANNEL_ID en el .env para que entre siempre al mismo)",
+                mention_author=False,
+            )
+            return
+        candidate = ctx.author.voice.channel
+        if not isinstance(candidate, discord.VoiceChannel):
+            await ctx.reply("Ese canal no es de voz, no me puedo conectar.", mention_author=False)
+            return
+        vc = candidate
+
+    try:
+        await voice_manager.join(vc, ctx.channel)
+        await ctx.reply(f"🎙️ Estoy en **{vc.name}**. Hablen tranqui que escucho y participo.", mention_author=False)
+    except Exception as e:
+        print(f"[VOZ] join error: {e}")
+        await ctx.reply(f"No pude conectarme: {e}", mention_author=False)
+
+
+async def _do_leave(ctx: commands.Context) -> None:
+    if not ctx.guild:
+        return
+    ok = await voice_manager.leave(ctx.guild.id)
+    if ok:
+        await ctx.reply("Listo, me piré del canal de voz. Sigo en el chat. 👋", mention_author=False)
+    else:
+        await ctx.reply("No estaba en ningún canal de voz, capa.", mention_author=False)
+
+
+@bot.command(name="join", aliases=["entra", "vozon", "meteteacanal"])
+async def join_cmd(ctx: commands.Context):
+    await _do_join(ctx)
+
+
+@bot.command(name="leave", aliases=["sali", "vozoff", "chau"])
+async def leave_cmd(ctx: commands.Context):
+    await _do_leave(ctx)
+
+
+@bot.command(name="sayvoz")
+async def sayvoz_cmd(ctx: commands.Context, *, text: str):
+    """Forzar TTS en el canal de voz actual."""
+    if not ctx.guild or not voice_manager.is_connected(ctx.guild.id):
+        await ctx.reply("No estoy en un canal de voz. Decime `!join` primero.", mention_author=False)
+        return
+    session = voice_manager.get(ctx.guild.id)
+    if not session:
+        return
+    try:
+        await session.speak(text)
+    except Exception as e:
+        await ctx.reply(f"Error de TTS: {e}", mention_author=False)
+
+
+@bot.event
+async def on_voice_state_update(member: discord.Member, before, after):
+    """Si Lain queda sola en el VC, se desconecta sola."""
+    if not member.guild:
+        return
+    session = voice_manager.get(member.guild.id)
+    if not session or not session.voice_client or not session.voice_client.is_connected():
+        return
+    vc = session.voice_client.channel
+    if not vc:
+        return
+    # Cuenta humanos en el canal (excluyendo bots)
+    humans = [m for m in vc.members if not m.bot]
+    if not humans:
+        print(f"[VOZ] me quedé sola en {vc.name}, me piro")
+        await voice_manager.leave(member.guild.id)
+
+
 
 
 # ─── Entrypoint ───

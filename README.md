@@ -20,8 +20,60 @@ Bot personalidad "Lain" para grupos privados de Discord. Lee el historial del ch
 | `!resumen [N]` | Resumen de los ultimos N mensajes (default 50) |
 | `!contexto` | Manda el archivo .md de hoy con todo el contexto |
 | `!buscar <query>` | Busqueda web manual |
+| `!join` | Lain se mete a tu canal de voz (alias: `entra`, `vozon`) |
+| `!leave` | Lain sale del canal de voz (alias: `sali`, `vozoff`, `chau`) |
+| `!sayvoz <texto>` | Forzar TTS en el VC actual |
 | `!lain` | Info del bot |
 | `!helpbot` | Ayuda |
+
+También funciona en lenguaje natural mencionándola: `@Lain metete al canal de voz` / `@Lain andate del canal`.
+
+## Voz (ElevenLabs TTS + STT)
+
+Lain puede unirse a un canal de voz, **escuchar** lo que se dice (Scribe STT), **hablar** por TTS de ElevenLabs, y **mantener un único contexto unificado** entre lo que pasa en el chat de texto y lo que se dice por voz: todo se guarda en el mismo `data/contexts/YYYY-MM-DD.md` con marca `#VOZ:<canal>`, y la memoria de los últimos días sigue funcionando igual.
+
+### Setup
+
+1. Crear cuenta en [ElevenLabs](https://elevenlabs.io) y sacar API key en Settings → API Keys.
+2. Elegir una voz en la [Voice Library](https://elevenlabs.io/app/voice-library) y copiar su `voice_id`.
+3. Agregar al `.env`:
+   ```bash
+   VOICE_ENABLED=true
+   ELEVENLABS_API_KEY=sk_...
+   ELEVENLABS_VOICE_ID=AwmgI32PB22lsT7wnBFH
+   ELEVENLABS_TTS_MODEL=eleven_turbo_v2_5
+   VOICE_LANGUAGE=spa
+   ```
+4. Re-invitar al bot con permisos extra de Discord: `Connect`, `Speak`, `Use Voice Activity` (Voice Channel Permissions).
+5. Si corrés local, instalá `ffmpeg`:
+   - macOS: `brew install ffmpeg opus`
+   - Linux: `apt install ffmpeg libopus0`
+   - Docker: ya está incluido en el `Dockerfile`.
+
+### Modelos TTS (latencia vs calidad)
+
+| Modelo | Latencia | Calidad | Notas |
+|--------|----------|---------|-------|
+| `eleven_v3` | ~1-2s | Máxima expresividad | **Default actual.** El más natural y emocional |
+| `eleven_turbo_v2_5` | ~300ms | Alta | Mejor opción si la latencia molesta |
+| `eleven_flash_v2_5` | ~75ms | Media | Para charla ultra-rápida, calidad menor |
+| `eleven_multilingual_v2` | ~1-2s | Alta | Para grabaciones |
+
+### Cómo funciona
+
+- `!join` (con vos en un VC) → Lain se conecta y empieza a escuchar.
+- Lain transcribe cada turno de voz con ElevenLabs Scribe y lo guarda en el .md diario.
+- Si `VOICE_ALWAYS_RESPOND=true` (default) participa de toda la charla. Si lo ponés en false, solo responde cuando alguien dice "Lain" (o `VOICE_WAKE_WORDS`).
+- Genera respuestas con Claude usando el contexto unificado (texto + voz + memoria de 14 días) y las dice por TTS.
+- `!leave` para que se vaya. Si todos se van del VC, se desconecta sola.
+
+### Tuning útil
+
+- `VOICE_SILENCE_MS=800` → cuántos ms de silencio cierran un turno.
+- `VOICE_COOLDOWN_MS=1500` → mínimo entre dos respuestas seguidas (evita atropellarse).
+- `VOICE_MIN_TURN_CHARS=3` → ignora ruido tipo "eh", "ah".
+- `VOICE_MAX_RESPONSE_CHARS=600` → trunca respuestas TTS para que no eternice.
+- `VOICE_MIRROR_TEXT=true` → si está en VC, dice también por voz lo que responde en el chat de texto.
 
 ## Setup rapido (Docker)
 
@@ -66,6 +118,9 @@ Railway te da $5/mes de credito gratis, alcanza para el bot.
 | View Channels | Para ver los canales |
 | Embed Links | Para compartir links |
 | Message Content Intent | Para leer el contenido de los mensajes |
+| Connect (voz) | Para unirse al canal de voz |
+| Speak (voz) | Para hablar por TTS en el VC |
+| Use Voice Activity (voz) | Para detectar audio de los humanos |
 
 ## Estructura del proyecto
 
