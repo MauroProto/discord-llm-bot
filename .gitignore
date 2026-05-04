@@ -30,3 +30,7 @@ data/
 # Claude Code internals
 .claude/
 CLAUDE.md
+
+# Vercel deploy artifacts
+.vercel/
+landing/.vercel/
