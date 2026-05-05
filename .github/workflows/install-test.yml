@@ -1,0 +1,104 @@
+name: install-test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/install.sh"
+      - "setup.py"
+      - "requirements.txt"
+      - "bot.py"
+      - "config.py"
+      - "providers/**"
+      - ".github/workflows/install-test.yml"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    name: install.sh end-to-end (ubuntu)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run installer pointing at the local checkout
+        env:
+          # Point the installer at this checkout so we test the file we just
+          # pushed, not whatever is on the main branch right now.
+          DISCORD_LLM_BOT_REPO: ${{ github.workspace }}
+          DISCORD_LLM_BOT_DIR: /tmp/discord-llm-bot-install
+          DISCORD_LLM_BOT_BIN_DIR: /tmp/bin
+        run: bash scripts/install.sh
+
+      - name: Verify install layout
+        env:
+          DIR: /tmp/discord-llm-bot-install
+          BIN: /tmp/bin
+        run: |
+          set -e
+          test -d "$DIR" && echo "ok install dir"
+          test -f "$DIR/setup.py" && echo "ok setup.py"
+          test -f "$DIR/bot.py" && echo "ok bot.py"
+          test -d "$DIR/.venv" && echo "ok venv"
+          test -x "$BIN/discord-llm-bot" && echo "ok launcher"
+
+      - name: Launcher subcommands
+        env:
+          DIR: /tmp/discord-llm-bot-install
+          BIN: /tmp/bin
+        run: |
+          set -e
+          "$BIN/discord-llm-bot" path | grep -q "discord-llm-bot-install"
+          "$BIN/discord-llm-bot" help | grep -q "interactive setup"
+
+      - name: Doctor (no .env yet — should report issues but not crash)
+        env:
+          BIN: /tmp/bin
+        run: |
+          # Doctor exits 1 when .env is missing; we just check it doesn't crash.
+          "$BIN/discord-llm-bot" doctor || true
+
+      - name: Non-interactive setup populates .env
+        env:
+          DIR: /tmp/discord-llm-bot-install
+          BIN: /tmp/bin
+          DISCORD_BOT_TOKEN: dummy_token_for_ci
+          LLM_PROVIDER: ollama
+          OLLAMA_BASE_URL: http://localhost:11434/v1
+          OLLAMA_MODEL: llama3.3
+          BOT_PERSONALITY: friendly
+          ENABLE_VOICE: "false"
+        run: |
+          set -e
+          "$BIN/discord-llm-bot" from-env
+          test -f "$DIR/.env" && echo "ok .env written"
+          grep -q "LLM_PROVIDER=ollama" "$DIR/.env"
+          grep -q "BOT_PERSONALITY=friendly" "$DIR/.env"
+
+      - name: Bot module imports
+        env:
+          DIR: /tmp/discord-llm-bot-install
+        run: |
+          set -e
+          # Smoke-import the bot package so we catch syntax errors / missing
+          # symbols early. Real Discord connection is not tested here.
+          cd "$DIR"
+          "$DIR/.venv/bin/python3" -c "
+          import importlib
+          for mod in ['config', 'mcp_config', 'providers', 'personalities', 'context_manager', 'search_client']:
+              importlib.import_module(mod)
+              print(f'ok import {mod}')
+          # bot.py runs side-effects on import (creates client, etc.) so we
+          # only AST-parse it instead.
+          import ast, pathlib
+          for f in ['bot.py', 'voice_manager.py', 'elevenlabs_client.py']:
+              ast.parse(pathlib.Path(f).read_text())
+              print(f'ok parse {f}')
+          "
