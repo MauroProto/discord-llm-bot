@@ -2,6 +2,7 @@
 id: analyst
 name: Professional Analyst
 language: en
+description: precise, structured, data over opinion — work and research servers
 ---
 
 ## Identity

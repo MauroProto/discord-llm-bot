@@ -2,6 +2,7 @@
 id: friendly
 name: Friendly Assistant
 language: en
+description: warm, helpful, conversational — safe default for any community
 ---
 
 ## Identity

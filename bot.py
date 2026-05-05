@@ -998,5 +998,43 @@ async def slash_say(interaction: discord.Interaction, text: str):
 
 # ─── Entrypoint ───
 
+def _run() -> int:
+    """Start the bot with friendlier error messages for common misconfigs."""
+    import discord.errors as derrors
+
+    if not settings.DISCORD_BOT_TOKEN:
+        print(
+            "\n  \033[31m✗\033[0m DISCORD_BOT_TOKEN is empty.\n"
+            "    Set it in .env or run: python3 setup.py\n",
+            flush=True,
+        )
+        return 1
+
+    try:
+        bot.run(settings.DISCORD_BOT_TOKEN)
+        return 0
+    except derrors.LoginFailure:
+        print(
+            "\n  \033[31m✗\033[0m Discord rejected the token (LoginFailure).\n"
+            "    Check DISCORD_BOT_TOKEN in .env, or regenerate the token at\n"
+            "    https://discord.com/developers/applications.\n",
+            flush=True,
+        )
+        return 1
+    except derrors.PrivilegedIntentsRequired:
+        print(
+            "\n  \033[31m✗\033[0m Privileged intents are not enabled for this bot.\n"
+            "    In https://discord.com/developers/applications → your app →\n"
+            "    Bot → enable Message Content + Server Members intents, then\n"
+            "    restart.\n",
+            flush=True,
+        )
+        return 1
+    except KeyboardInterrupt:
+        print("\n  Stopped.")
+        return 0
+
+
 if __name__ == "__main__":
-    bot.run(settings.DISCORD_BOT_TOKEN)
+    import sys
+    sys.exit(_run())
