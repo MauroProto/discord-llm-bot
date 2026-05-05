@@ -34,7 +34,7 @@ from typing import Any
 
 from config import settings
 
-from .base import Capability, LLMProvider, resolve_personality
+from .base import Capability, LLMProvider, resolve_personality, warn_if_mcp_configured
 
 
 _URL_RE = re.compile(r"https?://\S+")
@@ -122,6 +122,7 @@ class CodexCliProvider(LLMProvider):
             bot_name=settings.BOT_DISPLAY_NAME or "the bot",
         )
         self.system_prompt = self._personality.chat_prompt
+        warn_if_mcp_configured(self.name)
 
     # ------- Capabilities -------
 
