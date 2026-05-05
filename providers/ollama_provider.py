@@ -171,6 +171,35 @@ class OllamaProvider(LLMProvider):
             *self._translate_messages(messages),
         ]
 
+    # ------- Streaming chat generation -------
+
+    async def stream_response(
+        self,
+        messages: list[dict],
+        use_search: bool = False,
+        search_query: str | None = None,
+        memory_text: str = "",
+    ):
+        try:
+            create_kwargs: dict[str, Any] = {
+                "model": self.model,
+                "messages": self._build_messages(messages, memory_text),
+                "max_tokens": self.max_tokens,
+                "stream": True,
+            }
+            stream = await self.client.chat.completions.create(**create_kwargs)
+            async for chunk in stream:
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+                if delta and getattr(delta, "content", None):
+                    yield delta.content
+        except Exception as e:
+            yield (
+                f"Ollama hiccupped. Is the daemon running on "
+                f"{self.client.base_url}? ({_clean_err(e)})"
+            )
+
     # ------- Chat generation -------
 
     async def generate_response(

@@ -204,6 +204,30 @@ class GeminiProvider(LLMProvider):
 
         return types.GenerateContentConfig(**config_kwargs)
 
+    # ------- Streaming chat generation -------
+
+    async def stream_response(
+        self,
+        messages: list[dict],
+        use_search: bool = False,
+        search_query: str | None = None,
+        memory_text: str = "",
+    ):
+        try:
+            contents = self._translate_messages(messages)
+            config = self._build_config(memory_text)
+            stream = await self.client.aio.models.generate_content_stream(
+                model=self.model,
+                contents=contents,
+                config=config,
+            )
+            async for chunk in stream:
+                t = getattr(chunk, "text", None)
+                if t:
+                    yield t
+        except Exception as e:
+            yield f"Gemini hiccupped, retry me. ({_clean_err(e)})"
+
     # ------- Chat generation -------
 
     async def generate_response(

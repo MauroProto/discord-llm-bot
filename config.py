@@ -26,6 +26,29 @@ class Config(BaseSettings):
     )
     
     # LLM provider selection (multi-provider support)
+    STREAMING_REPLIES: bool = Field(
+        default=True,
+        description=(
+            "Stream LLM responses to Discord by editing the message in place "
+            "as tokens arrive. Lower perceived latency. Disable if your LLM "
+            "or Discord rate limits cause issues."
+        ),
+    )
+    STREAM_EDIT_INTERVAL_MS: int = Field(
+        default=600,
+        description=(
+            "Min ms between Discord message edits during streaming. Discord "
+            "rate-limits ~5 edits/sec; 600ms keeps us safely under that."
+        ),
+    )
+    STREAM_EDIT_MIN_DELTA_CHARS: int = Field(
+        default=20,
+        description=(
+            "Don't edit the streamed Discord message unless at least this many "
+            "new characters have accumulated since the last edit."
+        ),
+    )
+
     LLM_PROVIDER: str = Field(
         default="anthropic",
         description=(

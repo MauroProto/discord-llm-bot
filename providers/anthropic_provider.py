@@ -128,6 +128,47 @@ class AnthropicProvider(LLMProvider):
             },
         ]
 
+    # ------- Streaming chat generation -------
+
+    async def stream_response(
+        self,
+        messages: list[dict],
+        use_search: bool = False,
+        search_query: str | None = None,
+        memory_text: str = "",
+    ):
+        """Stream Claude responses chunk-by-chunk.
+
+        Anthropic's `messages.stream` yields events; we forward only the
+        text deltas so the caller can edit a Discord message in place.
+        Thinking tokens and tool blocks are filtered out.
+        """
+        try:
+            create_kwargs: dict = {
+                "model": self.model,
+                "max_tokens": self.max_tokens,
+                "system": self._build_system_prompt(memory_text),
+                "messages": messages,
+            }
+            if self.extra_headers:
+                create_kwargs["extra_headers"] = self.extra_headers
+            if self.thinking_param:
+                create_kwargs["thinking"] = self.thinking_param
+            if self.output_config:
+                create_kwargs["output_config"] = self.output_config
+            if self.tools:
+                create_kwargs["tools"] = self.tools
+
+            async with self.client.messages.stream(**create_kwargs) as stream:
+                async for text in stream.text_stream:
+                    if text:
+                        yield text
+
+        except anthropic.APIError as e:
+            yield f"Che, la API de Claude se quejó. Reintentame. ({_clean_err(e)})"
+        except Exception as e:
+            yield f"Ups, algo se rompió. Reintentame en un toque. ({_clean_err(e)})"
+
     # ------- Chat generation -------
 
     async def generate_response(
