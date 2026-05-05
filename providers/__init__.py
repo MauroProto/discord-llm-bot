@@ -25,27 +25,43 @@ if TYPE_CHECKING:
 _provider_cache: dict[str, "LLMProvider"] = {}
 
 
+# Aliases collapse to a single canonical name so the cache returns one
+# instance per actual provider class.
+_ALIASES = {
+    "google": "gemini",
+    "anthropic": "anthropic",
+    "claude": "anthropic",
+    "openai": "openai",
+    "gpt": "openai",
+    "gemini": "gemini",
+}
+
+
 def get_provider(name: str | None = None) -> "LLMProvider":
     """Return the provider instance for `name` (or `settings.LLM_PROVIDER`)."""
-    name = (name or settings.LLM_PROVIDER).lower().strip()
+    raw = (name or settings.LLM_PROVIDER).lower().strip()
+    canonical = _ALIASES.get(raw, raw)
 
-    cached = _provider_cache.get(name)
+    cached = _provider_cache.get(canonical)
     if cached is not None:
         return cached
 
-    if name == "anthropic":
+    if canonical == "anthropic":
         from .anthropic_provider import AnthropicProvider
         provider = AnthropicProvider()
-    elif name == "openai":
+    elif canonical == "openai":
         from .openai_provider import OpenAIProvider
         provider = OpenAIProvider()
+    elif canonical == "gemini":
+        from .gemini_provider import GeminiProvider
+        provider = GeminiProvider()
     else:
         raise ValueError(
-            f"Unknown LLM provider {name!r}. "
-            f"Supported: anthropic, openai. (Gemini and OpenRouter coming next.)"
+            f"Unknown LLM provider {raw!r}. "
+            f"Supported: anthropic, openai, gemini. (OpenRouter coming next.)"
         )
 
-    _provider_cache[name] = provider
+    _provider_cache[canonical] = provider
     return provider
 
 

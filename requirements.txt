@@ -4,6 +4,7 @@ discord.py>=2.3.0
 # template so users can switch via LLM_PROVIDER without re-installing).
 anthropic>=0.28.0
 openai>=1.50.0
+google-genai>=1.0.0
 pydantic>=2.0.0
 pydantic-settings>=2.0.0
 python-dotenv>=1.0.0
