@@ -242,12 +242,35 @@ echo "${MAGENTA}─────────────────────�
 echo
 
 # Re-exec the wizard with a real TTY so curses works even when this script
-# was invoked via `curl ... | bash`.
-if [ -t 0 ] && [ -t 1 ]; then
-  exec "$VENV/bin/python3" "$INSTALL_DIR/setup.py"
-elif [ -e /dev/tty ]; then
-  exec "$VENV/bin/python3" "$INSTALL_DIR/setup.py" < /dev/tty > /dev/tty 2>&1
+# was invoked via `curl ... | bash`. We probe /dev/tty rather than just
+# checking if the path exists — under `docker run` without -t, the path
+# exists but cannot be opened.
+launch_wizard() {
+  if [ -t 0 ] && [ -t 1 ]; then
+    "$VENV/bin/python3" "$INSTALL_DIR/setup.py"
+    return $?
+  fi
+  if { exec 3</dev/tty; } 2>/dev/null; then
+    exec 3<&-
+    "$VENV/bin/python3" "$INSTALL_DIR/setup.py" </dev/tty >/dev/tty 2>&1
+    return $?
+  fi
+  return 99  # no tty available
+}
+
+if launch_wizard; then
+  :
 else
-  warn "No interactive terminal detected — skipping the wizard."
-  info "Run it later with: discord-llm-bot setup"
+  rc=$?
+  if [ $rc -eq 99 ]; then
+    warn "No interactive terminal detected — skipping the wizard."
+    info "Run it later with: discord-llm-bot setup"
+  else
+    warn "Wizard exited with status $rc."
+    info "Re-run anytime: discord-llm-bot setup"
+  fi
 fi
+
+# Always exit 0 — install itself succeeded; the wizard is interactive and
+# users may abort it on purpose.
+exit 0
