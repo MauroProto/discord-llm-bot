@@ -208,6 +208,37 @@ class OpenRouterProvider(LLMProvider):
             return f"{m}:online"
         return m
 
+    # ------- Streaming chat generation -------
+
+    async def stream_response(
+        self,
+        messages: list[dict],
+        use_search: bool = False,
+        search_query: str | None = None,
+        memory_text: str = "",
+    ):
+        try:
+            create_kwargs: dict[str, Any] = {
+                "model": self._resolve_model(),
+                "messages": self._build_messages(messages, memory_text),
+                "max_tokens": self.max_tokens,
+                "stream": True,
+            }
+            if self.reasoning_enabled and _is_reasoning_model(self.model):
+                create_kwargs["extra_body"] = {
+                    "reasoning": {"effort": _map_effort(self.reasoning_effort)},
+                }
+
+            stream = await self.client.chat.completions.create(**create_kwargs)
+            async for chunk in stream:
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+                if delta and getattr(delta, "content", None):
+                    yield delta.content
+        except Exception as e:
+            yield f"OpenRouter hiccupped, retry me. ({_clean_err(e)})"
+
     # ------- Chat generation -------
 
     async def generate_response(

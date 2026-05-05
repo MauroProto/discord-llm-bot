@@ -143,6 +143,33 @@ class LLMProvider(ABC):
         suffix += self._build_shared_voice_rules()
         return suffix
 
+    async def stream_response(
+        self,
+        messages: list[dict],
+        use_search: bool = False,
+        search_query: str | None = None,
+        memory_text: str = "",
+    ):
+        """Stream a chat-style response, yielding text chunks as they arrive.
+
+        Default implementation: call the non-streaming `generate_response`
+        and yield the whole result at once. Providers override this with a
+        true streaming version that yields incremental deltas — useful for
+        editing a Discord message progressively as the LLM generates.
+
+        Yields:
+            `str` chunks. Concatenating all yielded chunks reproduces the
+            full response.
+        """
+        full = await self.generate_response(
+            messages=messages,
+            use_search=use_search,
+            search_query=search_query,
+            memory_text=memory_text,
+        )
+        if full:
+            yield full
+
     @abstractmethod
     async def generate_response(
         self,

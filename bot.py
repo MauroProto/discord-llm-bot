@@ -257,6 +257,113 @@ async def _build_user_content(message: discord.Message, bot_user_id: int):
     return full_text
 
 
+async def _stream_to_discord(
+    message: discord.Message,
+    claude_messages: list[dict],
+    memory_text: str,
+) -> str:
+    """Stream the LLM response into Discord by editing the reply in place.
+
+    Strategy:
+    - Open the reply with a placeholder so the user sees activity immediately.
+    - Accumulate streamed deltas in `buffer`.
+    - Edit the message every `STREAM_EDIT_INTERVAL_MS` (rate-limit safety) and
+      when at least `STREAM_EDIT_MIN_DELTA_CHARS` of new text are pending.
+    - When the buffer crosses 1900 chars (Discord's 2000 cap minus margin),
+      "lock" the current message and continue in a follow-up.
+
+    Returns the full concatenated response text (for storage and voice mirror).
+    """
+    interval_s = max(0.1, settings.STREAM_EDIT_INTERVAL_MS / 1000)
+    min_delta = max(1, settings.STREAM_EDIT_MIN_DELTA_CHARS)
+    char_cap = 1900  # Discord hard cap is 2000; leave a margin for emoji escaping
+
+    full: list[str] = []
+    current_buffer: list[str] = []
+    current_msg: discord.Message | None = None
+    last_edit_at = 0.0
+    last_edited_text = ""
+
+    import time as _t
+
+    async def _open_message(initial_text: str) -> discord.Message:
+        """Open the very first reply with whatever we've accumulated."""
+        text = initial_text or "…"
+        return await message.reply(text[:char_cap], mention_author=False)
+
+    async def _flush(force: bool = False) -> None:
+        """Edit `current_msg` to reflect `current_buffer`, respecting rate limits."""
+        nonlocal current_msg, last_edit_at, last_edited_text
+        text = "".join(current_buffer)
+        if not text:
+            return
+
+        # First message: create it
+        if current_msg is None:
+            current_msg = await _open_message(text)
+            last_edit_at = _t.monotonic()
+            last_edited_text = text
+            return
+
+        # Rate-limit guard
+        delta = text[len(last_edited_text):] if text.startswith(last_edited_text) else ""
+        if not force:
+            if (_t.monotonic() - last_edit_at) < interval_s:
+                return
+            if len(delta) < min_delta:
+                return
+
+        try:
+            await current_msg.edit(content=text[:char_cap])
+            last_edit_at = _t.monotonic()
+            last_edited_text = text
+        except discord.HTTPException as e:
+            print(f"[stream] edit failed (will retry): {e}")
+
+    try:
+        async for chunk in claude_client.stream_response(
+            messages=claude_messages,
+            memory_text=memory_text,
+        ):
+            if not chunk:
+                continue
+            full.append(chunk)
+            current_buffer.append(chunk)
+
+            # If the current segment overflowed, lock it and start a follow-up
+            if sum(len(p) for p in current_buffer) > char_cap:
+                await _flush(force=True)
+                current_buffer = []
+                last_edited_text = ""
+                current_msg = await message.channel.send("…")
+                last_edit_at = _t.monotonic()
+                continue
+
+            await _flush(force=False)
+
+        # Final flush so the last delta is visible
+        await _flush(force=True)
+
+    except Exception as e:
+        print(f"[stream] error: {e}")
+        # Try to surface the failure inline rather than leaving a dangling "…"
+        try:
+            if current_msg is None:
+                await message.reply(
+                    f"Something broke while generating: {type(e).__name__}",
+                    mention_author=False,
+                )
+            else:
+                await current_msg.edit(
+                    content=("".join(current_buffer) or "")
+                    + f"\n\n[stream error: {type(e).__name__}]"
+                )
+        except Exception:
+            pass
+
+    return "".join(full).strip()
+
+
 @bot.event
 async def on_message(message: discord.Message):
     """Main message handler — detects mentions and triggers responses."""
@@ -308,16 +415,39 @@ async def on_message(message: discord.Message):
                 days=settings.MEMORY_DAYS,
                 max_chars=settings.MEMORY_MAX_CHARS,
             )
-            print(f"[MEM] cargada memoria de fondo: {len(memory_text)} chars")
+            print(f"[MEM] loaded memory: {len(memory_text)} chars")
 
-            # Generate response (web_search is enabled as a tool, Claude uses it when needed)
-            response = await claude_client.generate_response(
-                messages=claude_messages,
-                memory_text=memory_text,
-            )
-            
-            # Save context (only the new exchange, not full history)
+            # Generate response. Streaming = edit a single Discord message
+            # in place as tokens arrive (low perceived latency). Falls back
+            # to a single send for very long replies (>1900 chars per
+            # message — Discord's hard cap is 2000).
             channel_name = getattr(message.channel, "name", None)
+
+            if settings.STREAMING_REPLIES:
+                response = await _stream_to_discord(
+                    message=message,
+                    claude_messages=claude_messages,
+                    memory_text=memory_text,
+                )
+            else:
+                response = await claude_client.generate_response(
+                    messages=claude_messages,
+                    memory_text=memory_text,
+                )
+                if response and len(response) <= 2000:
+                    await message.reply(response, mention_author=False)
+                elif response:
+                    chunks = [response[i:i + 1900] for i in range(0, len(response), 1900)]
+                    for i, chunk in enumerate(chunks):
+                        if i == 0:
+                            await message.reply(chunk, mention_author=False)
+                        else:
+                            await message.channel.send(chunk)
+
+            if not response:
+                return
+
+            # Persist the exchange to the daily .md (and the thread file if applicable)
             context_manager.save_daily_context(
                 channel_id=message.channel.id,
                 bot_response=response,
@@ -333,18 +463,6 @@ async def on_message(message: discord.Message):
                     author=str(message.author),
                     thread_name=channel_name,
                 )
-            
-            # Send response (chunked if too long)
-            if len(response) <= 2000:
-                await message.reply(response, mention_author=False)
-            else:
-                # Split into chunks
-                chunks = [response[i:i+1900] for i in range(0, len(response), 1900)]
-                for i, chunk in enumerate(chunks):
-                    if i == 0:
-                        await message.reply(chunk, mention_author=False)
-                    else:
-                        await message.channel.send(chunk)
 
             # Mirror to voice if the bot is currently connected to a VC in this guild
             if (

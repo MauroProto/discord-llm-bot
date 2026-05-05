@@ -201,6 +201,44 @@ class OpenAIProvider(LLMProvider):
             + memory_text
         )
 
+    # ------- Streaming chat generation -------
+
+    async def stream_response(
+        self,
+        messages: list[dict],
+        use_search: bool = False,
+        search_query: str | None = None,
+        memory_text: str = "",
+    ):
+        """Stream OpenAI Responses chunks as text deltas."""
+        try:
+            create_kwargs: dict[str, Any] = {
+                "model": self.model,
+                "instructions": self._build_instructions(memory_text),
+                "input": self._translate_messages(messages),
+                "max_output_tokens": self.max_tokens,
+                "stream": True,
+            }
+            if self.tools:
+                create_kwargs["tools"] = self.tools
+            if self.reasoning_enabled and _is_reasoning_model(self.model):
+                create_kwargs["reasoning"] = {"effort": _map_effort(self.reasoning_effort)}
+
+            async with self.client.responses.stream(**create_kwargs) as stream:
+                async for event in stream:
+                    etype = getattr(event, "type", "")
+                    if etype == "response.output_text.delta":
+                        delta = getattr(event, "delta", "") or ""
+                        if delta:
+                            yield delta
+                    elif etype == "response.error":
+                        err = getattr(event, "error", None) or "unknown error"
+                        yield f"\n\n[error: {err}]"
+                        return
+
+        except Exception as e:
+            yield f"OpenAI hiccupped, retry me. ({_clean_err(e)})"
+
     # ------- Chat generation -------
 
     async def generate_response(
