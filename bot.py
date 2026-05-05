@@ -12,6 +12,7 @@ import re
 from collections import deque
 import aiohttp
 import discord
+from discord import app_commands
 from discord.ext import commands
 from datetime import datetime
 
@@ -57,6 +58,21 @@ async def on_ready():
     # Let context_manager use the live Discord username when persisting
     # exchanges, so the saved markdown reflects the real bot identity.
     context_manager.set_bot_name(bot.user.name)
+
+    # Sync slash commands. Guild-scoped sync is instant; global sync can take
+    # up to an hour to propagate across Discord's CDN, but only needs to run
+    # once per command set change.
+    try:
+        guild_obj = _allowed_guild_obj()
+        if guild_obj:
+            bot.tree.copy_global_to(guild=guild_obj)
+            synced = await bot.tree.sync(guild=guild_obj)
+            print(f"[bot] synced {len(synced)} slash commands to guild {settings.ALLOWED_GUILD_ID}")
+        else:
+            synced = await bot.tree.sync()
+            print(f"[bot] synced {len(synced)} slash commands globally")
+    except Exception as e:
+        print(f"[bot] slash command sync failed: {e}")
 
 
 def _should_respond(message: discord.Message) -> bool:
@@ -769,13 +785,215 @@ async def on_voice_state_update(member: discord.Member, before, after):
     vc = session.voice_client.channel
     if not vc:
         return
-    # Cuenta humanos en el canal (excluyendo bots)
+    # Count non-bot humans in the channel
     humans = [m for m in vc.members if not m.bot]
     if not humans:
-        print(f"[VOICE] me quedé sola en {vc.name}, me piro")
+        print(f"[VOICE] alone in {vc.name}, leaving")
         await voice_manager.leave(member.guild.id)
 
 
+# ─── Slash commands ───
+#
+# Slash commands are Discord's modern command interface (autocomplete,
+# argument validation, descriptions in the picker). The legacy `!prefix`
+# commands above keep working for muscle memory and existing aliases.
+#
+# Slash commands need to be SYNCED with Discord on startup. We do that in
+# `on_ready` once `bot.user` is known. If you set `ALLOWED_GUILD_ID`, sync
+# is scoped to that guild for instant availability; otherwise it's a global
+# sync (can take up to an hour to propagate the first time).
+
+tree = bot.tree
+
+
+def _allowed_guild_obj() -> discord.Object | None:
+    if settings.ALLOWED_GUILD_ID:
+        return discord.Object(id=settings.ALLOWED_GUILD_ID)
+    return None
+
+
+@tree.command(name="info", description="Show bot info (provider, model, personality)")
+async def slash_info(interaction: discord.Interaction):
+    bot_label = bot.user.name if bot.user else "Bot"
+    handle = f"@{bot_label}"
+    personality_id = getattr(claude_client._personality, "id", "n/a")
+    info = (
+        f"**{bot_label}**\n"
+        f"Provider: `{claude_client.name}`\n"
+        f"Model: `{claude_client.model}`\n"
+        f"Personality: `{personality_id}`\n"
+        f"Allowed guild: `{settings.ALLOWED_GUILD_ID or 'any'}`\n"
+        f"Allowed channel: `{settings.ALLOWED_CHANNEL_ID or 'any'}`\n"
+        f"History window: `{settings.HISTORY_LIMIT}` messages\n"
+        f"\nMention me with {handle} to talk."
+    )
+    await interaction.response.send_message(info, ephemeral=False)
+
+
+@tree.command(name="help", description="List available commands")
+async def slash_help(interaction: discord.Interaction):
+    handle = f"@{bot.user.name}" if bot.user else "@bot"
+    text = (
+        f"**Commands**\n"
+        f"`{handle} <message>` — chat with full history context\n"
+        f"`/summary [N]` — summarise the last N messages\n"
+        f"`/context` — send today's saved `.md` context file\n"
+        f"`/search <query>` — manual web search\n"
+        f"`/join` — join the voice channel\n"
+        f"`/leave` — leave the voice channel\n"
+        f"`/say <text>` — speak a text via TTS\n"
+        f"`/info` — bot info\n"
+        f"`/help` — this message\n"
+        f"\nLegacy `!prefix` commands also work as aliases."
+    )
+    await interaction.response.send_message(text, ephemeral=True)
+
+
+@tree.command(name="summary", description="Summarise the last N messages of this channel")
+@app_commands.describe(limit="How many messages back to summarise (default 50, max 200)")
+async def slash_summary(interaction: discord.Interaction, limit: int = 50):
+    limit = max(1, min(200, limit))
+    await interaction.response.defer(thinking=True)
+    try:
+        history = await context_manager.get_channel_history(interaction.channel, limit=limit)
+        chat_text = "\n".join(
+            f"{m['author']}: {m['content']}"
+            for m in history if m['content'].strip()
+        )
+        response = await claude_client.analyze_conversation(
+            history_text=chat_text,
+            task=(
+                f"Summarise the following Discord conversation. Match the tone "
+                f"and language of the channel (don't translate). Cover the last "
+                f"{limit} messages: who said what, what was decided, what's open."
+            ),
+        )
+        body = response if len(response) <= 1900 else response[:1900] + "..."
+        await interaction.followup.send(f"**Summary:**\n{body}")
+    except Exception as e:
+        print(f"[bot] /summary error: {e}")
+        await interaction.followup.send("Couldn't build the summary, try again.")
+
+
+@tree.command(name="context", description="Send today's saved context file")
+async def slash_context(interaction: discord.Interaction):
+    try:
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        filepath = context_manager.contexts_dir / f"{date_str}.md"
+        if not filepath.exists():
+            await interaction.response.send_message(
+                "No context saved yet today. Send me a message first.",
+                ephemeral=True,
+            )
+            return
+        if filepath.stat().st_size > 8_000_000:
+            await interaction.response.send_message(
+                "Today's context is too big to upload in one piece.",
+                ephemeral=True,
+            )
+            return
+        await interaction.response.send_message(
+            f"Today's saved context ({date_str}):",
+            file=discord.File(filepath),
+        )
+    except Exception as e:
+        print(f"[bot] /context error: {e}")
+        await interaction.response.send_message(
+            "Couldn't read the context file.", ephemeral=True
+        )
+
+
+@tree.command(name="search", description="Manual web search via the configured fallback")
+@app_commands.describe(query="What to search for")
+async def slash_search(interaction: discord.Interaction, query: str):
+    await interaction.response.defer(thinking=True)
+    try:
+        results = await search_client.search(query)
+        formatted = search_client.format_results(results)
+        llm_response = await claude_client.generate_response([
+            {
+                "role": "user",
+                "content": (
+                    f"I searched the web for: '{query}'.\n\nResults:\n{formatted}\n\n"
+                    f"Give me a short, direct summary of what came up."
+                ),
+            }
+        ])
+        await interaction.followup.send(llm_response[:1900])
+    except Exception as e:
+        print(f"[bot] /search error: {e}")
+        await interaction.followup.send(
+            "Search failed. (Check that a search API key is configured.)"
+        )
+
+
+@tree.command(name="join", description="Join the configured voice channel")
+async def slash_join(interaction: discord.Interaction):
+    # Reuse the prefix-command handler. It expects a Context; build one.
+    fake_message = interaction.message or None
+    if fake_message is None:
+        # Defer first so Discord doesn't time out while we connect
+        await interaction.response.defer(thinking=False, ephemeral=True)
+    err = _voice_disabled_msg()
+    if err:
+        await interaction.followup.send(err, ephemeral=True)
+        return
+    if not interaction.guild:
+        await interaction.followup.send("This only works in a server.", ephemeral=True)
+        return
+
+    vc = None
+    if settings.VOICE_CHANNEL_ID:
+        ch = interaction.guild.get_channel(settings.VOICE_CHANNEL_ID)
+        if isinstance(ch, discord.VoiceChannel):
+            vc = ch
+    if vc is None and isinstance(interaction.user, discord.Member) and interaction.user.voice:
+        if isinstance(interaction.user.voice.channel, discord.VoiceChannel):
+            vc = interaction.user.voice.channel
+
+    if vc is None:
+        await interaction.followup.send(
+            "Join a voice channel first or set `VOICE_CHANNEL_ID`.",
+            ephemeral=True,
+        )
+        return
+
+    try:
+        await voice_manager.join(vc, interaction.channel)
+        await interaction.followup.send(f"Connected to **{vc.name}**.")
+    except Exception as e:
+        print(f"[VOICE] /join error: {e}")
+        await interaction.followup.send(f"Couldn't connect: {e}", ephemeral=True)
+
+
+@tree.command(name="leave", description="Leave the voice channel")
+async def slash_leave(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    if not interaction.guild:
+        await interaction.followup.send("This only works in a server.")
+        return
+    ok = await voice_manager.leave(interaction.guild.id)
+    if ok:
+        await interaction.followup.send("Left the voice channel.")
+    else:
+        await interaction.followup.send("Wasn't in any voice channel.")
+
+
+@tree.command(name="say", description="Force a TTS line in the current voice channel")
+@app_commands.describe(text="What to speak")
+async def slash_say(interaction: discord.Interaction, text: str):
+    await interaction.response.defer(ephemeral=True)
+    if not interaction.guild or not voice_manager.is_connected(interaction.guild.id):
+        await interaction.followup.send("I'm not in a voice channel. Use `/join` first.")
+        return
+    session = voice_manager.get(interaction.guild.id)
+    if not session:
+        return
+    try:
+        await session.speak(text)
+        await interaction.followup.send("Spoken.")
+    except Exception as e:
+        await interaction.followup.send(f"TTS error: {e}")
 
 
 # ─── Entrypoint ───
