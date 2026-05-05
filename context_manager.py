@@ -34,6 +34,21 @@ class ContextManager:
             })
         return list(reversed(messages))
     
+    @property
+    def bot_name(self) -> str:
+        """Display name to use as the bot's marker in saved exchanges.
+
+        Resolved lazily so the bot's actual Discord username (set after
+        login) takes precedence over the env-configured display name.
+        """
+        if getattr(self, "_runtime_bot_name", None):
+            return self._runtime_bot_name  # type: ignore[return-value]
+        return settings.BOT_DISPLAY_NAME or "Bot"
+
+    def set_bot_name(self, name: str) -> None:
+        """Called from `bot.on_ready` once `bot.user` is available."""
+        self._runtime_bot_name = name
+
     def _build_exchange_markdown(
         self,
         author: str | None,
@@ -41,7 +56,7 @@ class ContextManager:
         bot_response: str | None,
         channel_name: str | None = None,
     ) -> str:
-        """Build markdown for a single user→Lain exchange."""
+        """Build markdown for a single user → bot exchange."""
         now = datetime.now()
         lines = [f"### {now.strftime('%H:%M:%S')}"]
         if channel_name:
@@ -49,12 +64,12 @@ class ContextManager:
         lines.append("")
 
         if query is not None:
-            who = author or "usuario"
-            safe_query = query.strip().replace("\n", "\n> ") or "[sin texto]"
+            who = author or "user"
+            safe_query = query.strip().replace("\n", "\n> ") or "[empty]"
             lines.extend([f"**{who}:**", "", f"> {safe_query}", ""])
 
         if bot_response is not None:
-            lines.extend(["**Lain:**", "", bot_response.strip(), ""])
+            lines.extend([f"**{self.bot_name}:**", "", bot_response.strip(), ""])
 
         lines.extend(["---", ""])
         return "\n".join(lines)
