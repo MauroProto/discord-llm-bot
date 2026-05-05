@@ -29,8 +29,36 @@ class Config(BaseSettings):
     LLM_PROVIDER: str = Field(
         default="anthropic",
         description=(
-            "Which LLM provider to use. Currently supported: 'anthropic'. "
-            "More providers (openai, gemini, openrouter) coming in upcoming PRs."
+            "Which LLM provider to use. Currently supported: 'anthropic', "
+            "'openai'. More providers (gemini, openrouter) coming in upcoming PRs."
+        ),
+    )
+
+    # OpenAI (used when LLM_PROVIDER=openai or for OpenRouter base URL)
+    OPENAI_API_KEY: str | None = Field(
+        default=None,
+        description="OpenAI API key (https://platform.openai.com/api-keys)",
+    )
+    OPENAI_MODEL: str = Field(
+        default="gpt-5.4",
+        description=(
+            "OpenAI model id. Examples: gpt-5.4 (flagship), gpt-5.4-mini (cheap, "
+            "fast), gpt-4.1 (1M context), o3 / o4-mini (reasoning models)."
+        ),
+    )
+    OPENAI_BASE_URL: str | None = Field(
+        default=None,
+        description=(
+            "Override the OpenAI API base URL. Use for OpenRouter "
+            "(https://openrouter.ai/api/v1) or self-hosted OpenAI-compatible "
+            "endpoints. Leave empty for OpenAI proper."
+        ),
+    )
+    VOICE_OPENAI_MODEL: str | None = Field(
+        default=None,
+        description=(
+            "Override OPENAI_MODEL specifically for voice replies (faster / "
+            "cheaper). e.g. gpt-5.4-mini. Only honored when LLM_PROVIDER=openai."
         ),
     )
 
