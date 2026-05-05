@@ -30,7 +30,8 @@ class Config(BaseSettings):
         default="anthropic",
         description=(
             "Which LLM provider to use. Supported: 'anthropic', 'openai', "
-            "'gemini'. OpenRouter coming next."
+            "'gemini', 'openrouter'. Use 'openrouter' if you want a single "
+            "API key that works across Claude, GPT, Gemini, Llama, etc."
         ),
     )
 
@@ -87,6 +88,38 @@ class Config(BaseSettings):
         description=(
             "Override GEMINI_MODEL specifically for voice replies. "
             "e.g. gemini-2.5-flash. Only honored when LLM_PROVIDER=gemini."
+        ),
+    )
+
+    # OpenRouter (used when LLM_PROVIDER=openrouter — one key for many models)
+    OPENROUTER_API_KEY: str | None = Field(
+        default=None,
+        description="OpenRouter API key (https://openrouter.ai/keys).",
+    )
+    OPENROUTER_MODEL: str = Field(
+        default="anthropic/claude-haiku-4-5",
+        description=(
+            "OpenRouter model id, format 'provider/model'. Examples: "
+            "anthropic/claude-opus-4-7, openai/gpt-5.4, google/gemini-3.1-pro-preview, "
+            "meta-llama/llama-3.3-70b-instruct. Append ':online' to enable web search."
+        ),
+    )
+    OPENROUTER_REFERER: str | None = Field(
+        default=None,
+        description=(
+            "Optional HTTP-Referer header sent to OpenRouter so your app "
+            "appears in their dashboard. e.g. https://yourdomain.example."
+        ),
+    )
+    OPENROUTER_APP_NAME: str | None = Field(
+        default=None,
+        description="Optional X-Title header (your app name) for OpenRouter dashboard.",
+    )
+    VOICE_OPENROUTER_MODEL: str | None = Field(
+        default=None,
+        description=(
+            "Override OPENROUTER_MODEL specifically for voice replies. "
+            "e.g. anthropic/claude-haiku-4-5 or openai/gpt-5.4-mini."
         ),
     )
 
