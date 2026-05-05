@@ -25,6 +25,15 @@ class Config(BaseSettings):
         description="Only respond in this channel ID (None = no restriction)"
     )
     
+    # LLM provider selection (multi-provider support)
+    LLM_PROVIDER: str = Field(
+        default="anthropic",
+        description=(
+            "Which LLM provider to use. Currently supported: 'anthropic'. "
+            "More providers (openai, gemini, openrouter) coming in upcoming PRs."
+        ),
+    )
+
     # Claude / Anthropic
     ANTHROPIC_API_KEY: str = Field(..., description="Anthropic API key")
     ANTHROPIC_MODEL: str = Field(
