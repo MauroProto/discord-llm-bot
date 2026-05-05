@@ -74,6 +74,9 @@ jobs:
         env:
           DIR: /tmp/discord-llm-bot-install
           BIN: /tmp/bin
+          # Pin the data dir into the test sandbox so we can verify .env was
+          # written. Without this, cli.py writes to $HOME/.discord-llm-bot/.
+          DLBOT_HOME: /tmp/discord-llm-bot-data
           DISCORD_BOT_TOKEN: dummy_token_for_ci
           LLM_PROVIDER: ollama
           OLLAMA_BASE_URL: http://localhost:11434/v1
@@ -83,9 +86,9 @@ jobs:
         run: |
           set -e
           "$BIN/discord-llm-bot" from-env
-          test -f "$DIR/.env" && echo "ok .env written"
-          grep -q "LLM_PROVIDER=ollama" "$DIR/.env"
-          grep -q "BOT_PERSONALITY=friendly" "$DIR/.env"
+          test -f "$DLBOT_HOME/.env" && echo "ok .env written"
+          grep -q "LLM_PROVIDER=ollama" "$DLBOT_HOME/.env"
+          grep -q "BOT_PERSONALITY=friendly" "$DLBOT_HOME/.env"
 
       - name: Bot module imports
         env:
@@ -97,13 +100,59 @@ jobs:
           cd "$DIR"
           "$DIR/.venv/bin/python3" -c "
           import importlib
-          for mod in ['config', 'mcp_config', 'providers', 'personalities', 'context_manager', 'search_client']:
+          for mod in ['config', 'mcp_config', 'providers', 'personalities', 'context_manager', 'search_client', 'cli']:
               importlib.import_module(mod)
               print(f'ok import {mod}')
           # bot.py runs side-effects on import (creates client, etc.) so we
           # only AST-parse it instead.
           import ast, pathlib
-          for f in ['bot.py', 'voice_manager.py', 'elevenlabs_client.py']:
+          for f in ['bot.py', 'voice_manager.py', 'elevenlabs_client.py', 'wizard.py']:
               ast.parse(pathlib.Path(f).read_text())
               print(f'ok parse {f}')
           "
+
+  pipx:
+    name: pipx install (ubuntu)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pipx
+        run: |
+          python3 -m pip install --user pipx
+          python3 -m pipx ensurepath
+
+      - name: Install via pipx from local checkout
+        run: |
+          # --pip-args='--pre' is required because discord-ext-voice-recv
+          # only ships pre-releases.
+          ~/.local/bin/pipx install . --pip-args='--pre'
+
+      - name: discord-llm-bot subcommands
+        env:
+          DLBOT_HOME: /tmp/dlbot-pipx-data
+        run: |
+          set -e
+          ~/.local/bin/discord-llm-bot help | grep -q "interactive setup"
+          ~/.local/bin/discord-llm-bot path
+
+      - name: from-env via pipx-installed CLI
+        env:
+          DLBOT_HOME: /tmp/dlbot-pipx-data
+          DISCORD_BOT_TOKEN: dummy_token
+          LLM_PROVIDER: ollama
+          OLLAMA_MODEL: llama3.3
+          BOT_PERSONALITY: friendly
+        run: |
+          set -e
+          ~/.local/bin/discord-llm-bot from-env
+          test -f "$DLBOT_HOME/.env" && echo "ok .env written"
+          grep -q "LLM_PROVIDER=ollama" "$DLBOT_HOME/.env"
