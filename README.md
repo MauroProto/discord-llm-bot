@@ -24,17 +24,41 @@ A self-hosted Discord bot that talks via **Claude, GPT, Gemini, or OpenRouter** 
 
 ## Quick start
 
-### 1. Create a Discord bot
+### One-line install (recommended)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/MauroProto/discord-llm-bot/main/scripts/install.sh | bash
+```
+
+That single command:
+
+1. Detects your OS (macOS / Debian / Arch / Fedora) and installs `ffmpeg`, `opus`, `libsodium` for voice.
+2. Clones the repo into `~/.discord-llm-bot/`.
+3. Creates an isolated Python venv and installs all dependencies.
+4. Drops a `discord-llm-bot` launcher into `~/.local/bin`.
+5. Launches the **interactive setup wizard** — paste your Discord token + an LLM API key, pick a personality, choose voice on/off, done.
+
+When it's finished:
+
+```bash
+discord-llm-bot          # start the bot
+discord-llm-bot setup    # re-run the wizard
+discord-llm-bot update   # pull latest + reinstall deps
+```
+
+### Manual install (if you'd rather see every step)
+
+<details>
+<summary>Click to expand</summary>
+
+#### 1. Discord bot
 
 1. New application: <https://discord.com/developers/applications>.
 2. Add a **Bot**, copy the token.
 3. Enable the **Message Content**, **Server Members**, and **Voice State** intents.
-4. Generate an OAuth2 invite URL with these permissions:
-   - `Send Messages`, `Read Message History`, `View Channels`, `Embed Links`
-   - `Connect`, `Speak`, `Use Voice Activity` *(only if you want voice)*
-5. Invite the bot to your server.
+4. Generate an OAuth2 invite URL with: `Send Messages`, `Read Message History`, `View Channels`, `Embed Links`, plus `Connect`, `Speak`, `Use Voice Activity` (voice only). Invite the bot.
 
-### 2. Pick a provider and get an API key
+#### 2. Pick a provider and get an API key
 
 | Provider | Key page | Best when |
 |---|---|---|
@@ -43,42 +67,34 @@ A self-hosted Discord bot that talks via **Claude, GPT, Gemini, or OpenRouter** 
 | **Google** | <https://aistudio.google.com/apikey> | You want Gemini 2.5/3.x (1M context, fastest Flash variants) |
 | **OpenRouter** | <https://openrouter.ai/keys> | You want a single key that works across all providers (passthrough pricing) |
 
-**Optional** for voice: <https://elevenlabs.io/app/settings/api-keys>.
+Optional for voice: <https://elevenlabs.io/app/settings/api-keys>.
 
-### 3. Configure
+#### 3. Clone, install, configure
 
 ```bash
-git clone https://github.com/MauroProto/discord-llm-bot.git discord-llm-bot
+git clone https://github.com/MauroProto/discord-llm-bot.git
 cd discord-llm-bot
-cp .env.example .env
-# Open .env and fill in DISCORD_BOT_TOKEN, ALLOWED_GUILD_ID,
-# LLM_PROVIDER, and the matching <PROVIDER>_API_KEY.
-```
 
-### 4. Run
+# system deps for voice (skip if text-only)
+brew install ffmpeg opus libsodium        # macOS
+# sudo apt install ffmpeg libopus0 libsodium23   # Debian / Ubuntu
 
-#### Local (macOS / Linux)
-
-```bash
-brew install ffmpeg opus libsodium      # macOS
-# sudo apt install ffmpeg libopus0      # Debian / Ubuntu
-
-pip install --pre -r requirements.txt   # --pre is required (voice-recv ships only alphas)
+pip install --pre -r requirements.txt     # --pre is required (voice-recv ships only alphas)
+python3 setup.py                          # interactive wizard, writes .env for you
 python3 bot.py
 ```
 
-#### Docker
+#### 4. Docker
 
 ```bash
 docker compose up --build
 ```
 
-#### Railway
+#### 5. Railway / Fly / VPS
 
-1. Connect this repo on <https://railway.app/>.
-2. The `Dockerfile` and `railway.json` are picked up automatically.
-3. Paste your environment variables into the **Variables** tab.
-4. Deploy. The bot starts immediately and reconnects on restart.
+Connect this repo, the `Dockerfile` and `railway.json` are picked up automatically. Paste env vars into the platform's variables tab — `python3 setup.py` prints them for you when you pick "Railway / Fly / VPS" as the deploy target.
+
+</details>
 
 ## Switching providers
 
