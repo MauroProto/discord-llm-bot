@@ -2,12 +2,17 @@
 
 # discord-llm-bot
 
-A self-hosted Discord bot that talks via **Claude, GPT, Gemini, OpenRouter, Ollama, or your ChatGPT subscription** — your choice — with optional **voice channel support** (ElevenLabs TTS + Scribe STT) and a **single unified memory store** across text and voice.
+**One Discord bot. Six LLM providers. One unified memory across chat and voice.**
+
+Talk to it in chat, talk to it in voice — the same bot, with the same memory, switchable between Claude, GPT, Gemini, OpenRouter, Ollama, or your ChatGPT subscription. Self-hosted, MIT-licensed, no SaaS layer.
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![discord.py](https://img.shields.io/badge/discord.py-2.7-5865F2.svg?logo=discord&logoColor=white)](https://github.com/Rapptz/discord.py)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![install-test](https://github.com/MauroProto/discord-llm-bot/actions/workflows/install-test.yml/badge.svg)](https://github.com/MauroProto/discord-llm-bot/actions/workflows/install-test.yml)
+[![Latest release](https://img.shields.io/github/v/release/MauroProto/discord-llm-bot?display_name=tag&color=blue)](https://github.com/MauroProto/discord-llm-bot/releases/latest)
+
+[**Landing**](https://discord-llm-bot.vercel.app)  ·  [**Quick start**](#quick-start)  ·  [**Switching providers**](#switching-providers)  ·  [**Voice mode**](#voice-mode)  ·  [**FAQ**](#why-not-subscriptions)
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https%3A%2F%2Fgithub.com%2FMauroProto%2Fdiscord-llm-bot&envs=DISCORD_BOT_TOKEN%2CALLOWED_GUILD_ID%2CLLM_PROVIDER%2CANTHROPIC_API_KEY%2COPENAI_API_KEY%2CGOOGLE_API_KEY%2COPENROUTER_API_KEY%2CBOT_PERSONALITY%2CENABLE_VOICE%2CELEVENLABS_API_KEY&DISCORD_BOT_TOKENDesc=Discord+bot+token&LLM_PROVIDERDesc=anthropic+%7C+openai+%7C+gemini+%7C+openrouter+%7C+ollama+%7C+codex_cli&LLM_PROVIDERDefault=anthropic&BOT_PERSONALITYDefault=friendly&ENABLE_VOICEDefault=false)
 
@@ -15,14 +20,15 @@ A self-hosted Discord bot that talks via **Claude, GPT, Gemini, OpenRouter, Olla
 
 ---
 
-## What you get
+## Highlights
 
-- **One bot, four providers.** Switch between Anthropic Claude, OpenAI GPT/o-series, Google Gemini, and OpenRouter (a single key for 100+ models) by changing one env var.
-- **Pluggable personalities.** Three built-in presets (`friendly`, `snarky`, `analyst`) and a path to drop in your own — either as a markdown file or as a literal env-var override.
-- **Voice channels.** `!join` and the bot enters a voice channel, transcribes everyone with ElevenLabs Scribe, replies through the speaker with ElevenLabs TTS, and remembers it all.
-- **Unified text + voice memory.** Voice transcripts and text messages live in the same daily `.md`. The bot recalls in chat what was said in voice, and the other way around.
-- **Inline chat from voice.** While speaking on the call, the bot can drop a link, code snippet, or list into the text channel using `[CHAT: …]` / `[SOLO_CHAT: …]` markers — no special command needed.
-- **Production patches included.** DAVE encryption monkey-patch (Discord's 2026 E2EE protocol), anti-echo, cancel-on-new-input, prompt caching for fast follow-up turns. The unsexy stuff that actually makes voice work.
+- **Six providers, one env var.** Anthropic Claude · OpenAI GPT/o-series · Google Gemini · OpenRouter (one key for 100+ models) · Ollama (local, free) · OpenAI Codex CLI (uses your ChatGPT subscription).
+- **Voice channels that actually work.** `/join` and the bot drops into a voice channel, transcribes with ElevenLabs Scribe, replies through TTS, and writes everything into the same daily memory file as text. Inline `[CHAT: …]` / `[SOLO_CHAT: …]` markers let it post links and code blocks in the text channel mid-call.
+- **Three personality presets + custom prompts.** `friendly`, `snarky`, `analyst` ship with the repo. Plug your own as a markdown file or an env-var literal. `{{BOT_NAME}}` is substituted everywhere.
+- **Streaming replies.** Discord messages edited in place as the LLM generates — same UX as ChatGPT, except inside Discord.
+- **Two install paths in one command.** `curl | bash` or `pipx install`, both end with the same `discord-llm-bot` CLI on your PATH.
+- **MCP support.** Connect Claude to remote Model Context Protocol servers (GitHub, Notion, custom) without running a client.
+- **Production patches included.** DAVE encryption monkey-patch (Discord's 2026 E2EE protocol), anti-echo, cancel-on-new-input, prompt caching. The unsexy plumbing that makes voice mode reliable.
 
 ## Quick start
 
@@ -286,13 +292,17 @@ The bot spawns the local `codex` binary as a child process; requests count again
                                       └──────────────────┘
 ```
 
-### Voice pipeline notes
+## Voice mode
+
+The bot can join Discord voice channels, hear everyone, and talk back. Below is the pipeline and the production patches that make it stable.
 
 - **DAVE patch.** Discord migrated to a new end-to-end encryption protocol in 2026. The upstream `discord-ext-voice-recv 0.5.2a179` doesn't decrypt DAVE, so we monkey-patch `PacketDecoder` at runtime to call `dave_session.decrypt()` before Opus decoding. Code is inlined from upstream [PR #54](https://github.com/imayhaveborkedit/discord-ext-voice-recv/pull/54).
 - **HTTP STT.** The async ElevenLabs SDK hangs on long audio without raising. We use `aiohttp` directly with an explicit 20-second timeout.
 - **Anti-echo.** When the bot is speaking, incoming audio is ignored (`_is_speaking` flag plus 800 ms guard) so it doesn't barge-in on its own voice.
 - **Cancel on new input.** Only the most recent user turn is answered. Pending LLM/TTS tasks get cancelled, but STT runs in an independent task so it never gets killed mid-request.
 - **Prompt caching.** Long-term memory becomes a cached prefix, so the second voice reply onward only reprocesses the delta. Anthropic uses explicit `cache_control: ephemeral`; OpenAI/Gemini cache automatically on stable prefixes.
+
+End-to-end latency hovers around 3.5 s on Haiku + ElevenLabs Turbo + cache hits.
 
 ## Configuration
 
