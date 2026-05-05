@@ -7,6 +7,7 @@ A self-hosted Discord bot that talks via **Claude, GPT, Gemini, OpenRouter, Olla
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![discord.py](https://img.shields.io/badge/discord.py-2.7-5865F2.svg?logo=discord&logoColor=white)](https://github.com/Rapptz/discord.py)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![install-test](https://github.com/MauroProto/discord-llm-bot/actions/workflows/install-test.yml/badge.svg)](https://github.com/MauroProto/discord-llm-bot/actions/workflows/install-test.yml)
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https%3A%2F%2Fgithub.com%2FMauroProto%2Fdiscord-llm-bot&envs=DISCORD_BOT_TOKEN%2CALLOWED_GUILD_ID%2CLLM_PROVIDER%2CANTHROPIC_API_KEY%2COPENAI_API_KEY%2CGOOGLE_API_KEY%2COPENROUTER_API_KEY%2CBOT_PERSONALITY%2CENABLE_VOICE%2CELEVENLABS_API_KEY&DISCORD_BOT_TOKENDesc=Discord+bot+token&LLM_PROVIDERDesc=anthropic+%7C+openai+%7C+gemini+%7C+openrouter+%7C+ollama+%7C+codex_cli&LLM_PROVIDERDefault=anthropic&BOT_PERSONALITYDefault=friendly&ENABLE_VOICEDefault=false)
 
