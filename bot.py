@@ -281,7 +281,7 @@ async def on_message(message: discord.Message):
     # Mark as processed
     _mark_processed(message.id)
 
-    # Detección por lenguaje natural: "metete al canal de voz" / "andate del canal"
+    # Natural-language voice triggers: "join voice", "leave voice", etc.
     if bot.user and bot.user.mentioned_in(message):
         content = message.content
         if _LEAVE_NL_RE.search(content):
@@ -387,8 +387,8 @@ async def ask_cmd(ctx: commands.Context, *, question: str):
     )
 
 
-@bot.command(name="resumen")
-async def resumen_cmd(ctx: commands.Context, limit: int = 50):
+@bot.command(name="summary", aliases=["resumen"])
+async def summary_cmd(ctx: commands.Context, limit: int = 50):
     """Summarise the last N messages of the current channel."""
     try:
         async with ctx.typing():
@@ -413,12 +413,12 @@ async def resumen_cmd(ctx: commands.Context, limit: int = 50):
                 await ctx.reply(response[:1900] + "...", mention_author=False)
 
     except Exception as e:
-        print(f"[bot] !resumen error: {e}")
+        print(f"[bot] !summary error: {e}")
         await ctx.reply("Couldn't build the summary, try again.", mention_author=False)
 
 
-@bot.command(name="contexto")
-async def contexto_cmd(ctx: commands.Context):
+@bot.command(name="context", aliases=["contexto"])
+async def context_cmd(ctx: commands.Context):
     """Send today's saved context file."""
     try:
         date_str = datetime.now().strftime("%Y-%m-%d")
@@ -447,12 +447,12 @@ async def contexto_cmd(ctx: commands.Context):
         )
 
     except Exception as e:
-        print(f"[bot] !contexto error: {e}")
+        print(f"[bot] !context error: {e}")
         await ctx.reply("Couldn't read the context file, try again.", mention_author=False)
 
 
-@bot.command(name="buscar")
-async def buscar_cmd(ctx: commands.Context, *, query: str):
+@bot.command(name="search", aliases=["buscar"])
+async def search_cmd(ctx: commands.Context, *, query: str):
     """Manual web search via the configured fallback provider."""
     try:
         async with ctx.typing():
@@ -473,15 +473,15 @@ async def buscar_cmd(ctx: commands.Context, *, query: str):
             await ctx.reply(llm_response[:1900], mention_author=False)
 
     except Exception as e:
-        print(f"[bot] !buscar error: {e}")
+        print(f"[bot] !search error: {e}")
         await ctx.reply(
             "Search failed. (Check that a search API key is configured.)",
             mention_author=False,
         )
 
 
-@bot.command(name="lain")
-async def lain_cmd(ctx: commands.Context):
+@bot.command(name="info", aliases=["lain"])
+async def info_cmd(ctx: commands.Context):
     """Bot info."""
     bot_label = bot.user.name if bot.user else "Bot"
     handle = f"@{bot_label}"
@@ -495,43 +495,45 @@ async def lain_cmd(ctx: commands.Context):
         f"Allowed channel: `{settings.ALLOWED_CHANNEL_ID or 'any'}`\n"
         f"History window: `{settings.HISTORY_LIMIT}` messages\n"
         f"\nMention me with {handle} to talk. "
-        f"Use `{settings.BOT_PREFIX}helpbot` for commands."
+        f"Use `{settings.BOT_PREFIX}help` for commands."
     )
     await ctx.reply(info, mention_author=False)
 
 
-@bot.command(name="helpbot")
-async def helpbot_cmd(ctx: commands.Context):
+@bot.command(name="help", aliases=["helpbot"])
+async def help_cmd(ctx: commands.Context):
     """Show help."""
     handle = f"@{bot.user.name}" if bot.user else "@bot"
     p = settings.BOT_PREFIX
     help_text = (
         f"**Commands**\n"
         f"`{handle} <message>` — chat with me; I read recent history and reply with context\n"
-        f"`{p}resumen [N]` — summarise the last N messages (default 50)\n"
-        f"`{p}contexto` — send today's saved `.md` context file\n"
-        f"`{p}buscar <query>` — manual web search\n"
-        f"`{p}join` — join your voice channel (aliases: `entra`, `vozon`)\n"
-        f"`{p}leave` — leave the voice channel (aliases: `sali`, `vozoff`, `chau`)\n"
-        f"`{p}sayvoz <text>` — force the bot to speak something via TTS\n"
-        f"`{p}lain` — bot info\n"
-        f"`{p}helpbot` — this message\n"
+        f"`{p}summary [N]` — summarise the last N messages (default 50)\n"
+        f"`{p}context` — send today's saved `.md` context file\n"
+        f"`{p}search <query>` — manual web search\n"
+        f"`{p}join` — join the voice channel\n"
+        f"`{p}leave` — leave the voice channel\n"
+        f"`{p}say <text>` — force the bot to speak something via TTS\n"
+        f"`{p}info` — bot info (provider, model, personality)\n"
+        f"`{p}help` — this message\n"
         f"\n**Tip:** mention me ({handle}) any time and I'll join the conversation with full chat context. "
         f"Natural-language phrases like “join voice channel” or “leave voice” also work."
     )
     await ctx.reply(help_text, mention_author=False)
 
 
-# ─── Voz ───
+# ─── Voice ───
 
+# Natural-language triggers — recognised when the bot is mentioned, e.g.
+# "@bot join voice channel" or "@bot get out of vc". Case-insensitive.
 _JOIN_NL_RE = re.compile(
-    r"\b(metete|met[ée]te|entr[áa]|sumate|veni|veng[áa]s|connectate|conect[áa]te|"
-    r"unite|met[ée]te al|andate al)\b.*\b(canal\s+de\s+voz|voz|vc|call|llamada)\b",
+    r"\b(join|hop\s+(in|on)|come\s+(in|to)|enter|connect)\b.*"
+    r"\b(voice|vc|call|voice\s+channel)\b",
     re.IGNORECASE,
 )
 _LEAVE_NL_RE = re.compile(
-    r"\b(salí|sali|salite|andate|chau|fuera|desconect[áa]te|salir|sal[íi] del)\b.*"
-    r"\b(canal\s+de\s+voz|voz|vc|call|llamada)\b",
+    r"\b(leave|exit|disconnect|drop|get\s+out\s+of|go|bye)\b.*"
+    r"\b(voice|vc|call|voice\s+channel)\b",
     re.IGNORECASE,
 )
 
@@ -613,18 +615,18 @@ async def _do_leave(ctx: commands.Context) -> None:
         await ctx.reply("Wasn't in any voice channel.", mention_author=False)
 
 
-@bot.command(name="join", aliases=["entra", "vozon", "meteteacanal"])
+@bot.command(name="join")
 async def join_cmd(ctx: commands.Context):
     await _do_join(ctx)
 
 
-@bot.command(name="leave", aliases=["sali", "vozoff", "chau"])
+@bot.command(name="leave")
 async def leave_cmd(ctx: commands.Context):
     await _do_leave(ctx)
 
 
-@bot.command(name="sayvoz")
-async def sayvoz_cmd(ctx: commands.Context, *, text: str):
+@bot.command(name="say", aliases=["sayvoz"])
+async def say_cmd(ctx: commands.Context, *, text: str):
     """Forzar TTS en el canal de voz actual."""
     if not ctx.guild or not voice_manager.is_connected(ctx.guild.id):
         await ctx.reply("I'm not in a voice channel. Use `!join` first.", mention_author=False)
