@@ -350,6 +350,18 @@ def parse_env(path: Path) -> dict[str, str]:
     return out
 
 
+def _is_placeholder(value: str) -> bool:
+    """Detect template placeholder values like 'your_token_here'."""
+    v = value.strip().strip('"').strip("'").lower()
+    if not v:
+        return False
+    if v.startswith("your_") and v.endswith("_here"):
+        return True
+    if v in ("changeme", "replace_me", "todo"):
+        return True
+    return False
+
+
 def write_env(values: dict[str, str]) -> Path:
     if ENV_PATH.exists():
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -365,9 +377,17 @@ def write_env(values: dict[str, str]) -> Path:
         for line in template.splitlines():
             stripped = line.strip()
             if stripped and not stripped.startswith("#") and "=" in stripped:
-                k = stripped.split("=", 1)[0].strip()
+                k, _, default_v = stripped.partition("=")
+                k = k.strip()
                 if k in values and values[k] != "":
                     lines.append(f"{k}={values[k]}")
+                    written.add(k)
+                elif _is_placeholder(default_v):
+                    # Don't carry the template placeholder into the user's
+                    # .env — it would fail pydantic validation (e.g. int
+                    # parsing on ALLOWED_GUILD_ID). Comment it out so the
+                    # field falls back to its default.
+                    lines.append(f"# {k}={default_v}  # set this if you want to use it")
                     written.add(k)
                 else:
                     lines.append(line)

@@ -272,7 +272,13 @@ class Config(BaseSettings):
     )
 
     # Claude / Anthropic
-    ANTHROPIC_API_KEY: str = Field(..., description="Anthropic API key")
+    ANTHROPIC_API_KEY: str = Field(
+        default="",
+        description=(
+            "Anthropic API key. Required only when LLM_PROVIDER=anthropic; "
+            "the Anthropic provider raises a clear error at startup if missing."
+        ),
+    )
     ANTHROPIC_MODEL: str = Field(
         default="claude-opus-4-7",
         description="Claude model to use"

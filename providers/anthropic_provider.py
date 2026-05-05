@@ -42,6 +42,11 @@ class AnthropicProvider(LLMProvider):
     WEB_FETCH_TOOL_TYPE = "web_fetch_20250910"
 
     def __init__(self) -> None:
+        if not settings.ANTHROPIC_API_KEY:
+            raise RuntimeError(
+                "ANTHROPIC_API_KEY is empty. Set it in .env (or switch to a "
+                "different LLM_PROVIDER). Run `python3 setup.py` to reconfigure."
+            )
         self.client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
         self.model = settings.ANTHROPIC_MODEL
         self.max_tokens = settings.MAX_TOKENS
