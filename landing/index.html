@@ -139,18 +139,29 @@
             A self-hosted Discord bot. Pick your LLM (Claude, GPT, Gemini, OpenRouter, Ollama, ChatGPT subscription), pick a personality, optionally bring it to your voice channels. One shared memory across text and voice.
           </p>
 
-          <!-- copy-able one-liner -->
-          <div class="mb-4 group relative">
-            <div class="text-[11px] font-mono text-ink-600 mb-1.5 uppercase tracking-wider">install in one line</div>
+          <!-- copy-able install commands -->
+          <div class="mb-4 space-y-2">
+            <div class="text-[11px] font-mono text-ink-600 mb-1.5 uppercase tracking-wider">install — pick one</div>
+
             <button
-              id="install-cmd"
+              id="install-curl"
               type="button"
-              onclick="navigator.clipboard.writeText('curl -fsSL https://raw.githubusercontent.com/MauroProto/discord-llm-bot/main/scripts/install.sh | bash').then(()=>{const t=document.getElementById('copy-tip');t.textContent='copied ✓';setTimeout(()=>t.textContent='click to copy',1600);})"
-              class="w-full text-left bg-ink-900 border border-ink-800 rounded-lg px-4 py-3 font-mono text-[12px] lg:text-[13px] text-ink-200 hover:border-ink-600 transition cursor-pointer overflow-x-auto"
+              onclick="navigator.clipboard.writeText('curl -fsSL https://raw.githubusercontent.com/MauroProto/discord-llm-bot/main/scripts/install.sh | bash').then(()=>{const t=document.getElementById('copy-tip-curl');t.textContent='copied ✓';setTimeout(()=>t.textContent='click to copy',1600);})"
+              class="w-full text-left bg-ink-900 border border-ink-800 rounded-lg px-4 py-2.5 font-mono text-[12px] lg:text-[13px] text-ink-200 hover:border-ink-600 transition cursor-pointer overflow-x-auto group"
             >
               <span class="text-ink-500 select-none">$ </span>curl -fsSL https://raw.githubusercontent.com/MauroProto/discord-llm-bot/main/scripts/install.sh | bash
+              <div class="text-[10px] font-mono text-ink-600 mt-0.5"><span id="copy-tip-curl">click to copy</span> &nbsp;·&nbsp; installs system deps + clones repo</div>
             </button>
-            <div id="copy-tip" class="text-[10px] font-mono text-ink-600 mt-1.5">click to copy</div>
+
+            <button
+              id="install-pipx"
+              type="button"
+              onclick="navigator.clipboard.writeText('pipx install git+https://github.com/MauroProto/discord-llm-bot.git').then(()=>{const t=document.getElementById('copy-tip-pipx');t.textContent='copied ✓';setTimeout(()=>t.textContent='click to copy',1600);})"
+              class="w-full text-left bg-ink-900 border border-ink-800 rounded-lg px-4 py-2.5 font-mono text-[12px] lg:text-[13px] text-ink-200 hover:border-ink-600 transition cursor-pointer overflow-x-auto group"
+            >
+              <span class="text-ink-500 select-none">$ </span>pipx install git+https://github.com/MauroProto/discord-llm-bot.git
+              <div class="text-[10px] font-mono text-ink-600 mt-0.5"><span id="copy-tip-pipx">click to copy</span> &nbsp;·&nbsp; Python-native, isolated venv</div>
+            </button>
           </div>
 
           <div class="flex flex-wrap items-center gap-3 mb-10">

@@ -58,9 +58,12 @@ jobs:
         env:
           DIR: /tmp/discord-llm-bot-install
           BIN: /tmp/bin
+          # cli.py's `path` subcommand prints the data dir (DLBOT_HOME), not
+          # the install dir. Pin DLBOT_HOME so we can assert against it.
+          DLBOT_HOME: /tmp/discord-llm-bot-data
         run: |
           set -e
-          "$BIN/discord-llm-bot" path | grep -q "discord-llm-bot-install"
+          "$BIN/discord-llm-bot" path | grep -q "discord-llm-bot-data"
           "$BIN/discord-llm-bot" help | grep -q "interactive setup"
 
       - name: Doctor (no .env yet — should report issues but not crash)
@@ -125,24 +128,28 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install pipx
+      - name: Install pipx and add bin dir to PATH
         run: |
           python3 -m pip install --user pipx
           python3 -m pipx ensurepath
+          # ensurepath only updates shell rc files for future sessions —
+          # add to GITHUB_PATH so subsequent steps can find the launcher.
+          echo "$(python3 -m pipx environment --value PIPX_BIN_DIR)" >> "$GITHUB_PATH"
 
       - name: Install via pipx from local checkout
         run: |
           # --pip-args='--pre' is required because discord-ext-voice-recv
           # only ships pre-releases.
-          ~/.local/bin/pipx install . --pip-args='--pre'
+          pipx install . --pip-args='--pre'
 
       - name: discord-llm-bot subcommands
         env:
           DLBOT_HOME: /tmp/dlbot-pipx-data
         run: |
           set -e
-          ~/.local/bin/discord-llm-bot help | grep -q "interactive setup"
-          ~/.local/bin/discord-llm-bot path
+          which discord-llm-bot
+          discord-llm-bot help | grep -q "interactive setup"
+          discord-llm-bot path | grep -q "dlbot-pipx-data"
 
       - name: from-env via pipx-installed CLI
         env:
@@ -153,6 +160,6 @@ jobs:
           BOT_PERSONALITY: friendly
         run: |
           set -e
-          ~/.local/bin/discord-llm-bot from-env
+          discord-llm-bot from-env
           test -f "$DLBOT_HOME/.env" && echo "ok .env written"
           grep -q "LLM_PROVIDER=ollama" "$DLBOT_HOME/.env"
