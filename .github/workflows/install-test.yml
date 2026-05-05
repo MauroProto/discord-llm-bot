@@ -96,10 +96,13 @@ jobs:
       - name: Bot module imports
         env:
           DIR: /tmp/discord-llm-bot-install
+          # config.py instantiates pydantic-settings on import; provide the
+          # required vars in-process rather than relying on a .env file. The
+          # actual .env-based path is exercised by the from-env step above.
+          DISCORD_BOT_TOKEN: dummy_for_imports
+          LLM_PROVIDER: ollama
         run: |
           set -e
-          # Smoke-import the bot package so we catch syntax errors / missing
-          # symbols early. Real Discord connection is not tested here.
           cd "$DIR"
           "$DIR/.venv/bin/python3" -c "
           import importlib
