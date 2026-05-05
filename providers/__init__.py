@@ -36,10 +36,13 @@ def get_provider(name: str | None = None) -> "LLMProvider":
     if name == "anthropic":
         from .anthropic_provider import AnthropicProvider
         provider = AnthropicProvider()
+    elif name == "openai":
+        from .openai_provider import OpenAIProvider
+        provider = OpenAIProvider()
     else:
         raise ValueError(
             f"Unknown LLM provider {name!r}. "
-            f"Supported: anthropic. (More providers coming in future PRs.)"
+            f"Supported: anthropic, openai. (Gemini and OpenRouter coming next.)"
         )
 
     _provider_cache[name] = provider
