@@ -35,6 +35,38 @@ class Config(BaseSettings):
         ),
     )
 
+    # Personality / display name
+    BOT_PERSONALITY: str = Field(
+        default="friendly",
+        description=(
+            "Which personality preset from `personalities/` to load. Built-in: "
+            "'friendly', 'snarky', 'analyst'. Add your own .md file in that "
+            "directory and reference it by id here."
+        ),
+    )
+    BOT_DISPLAY_NAME: str | None = Field(
+        default=None,
+        description=(
+            "Substituted for {{BOT_NAME}} in personality prompts. If empty, "
+            "the bot's actual Discord username is used at runtime."
+        ),
+    )
+    CUSTOM_SYSTEM_PROMPT: str | None = Field(
+        default=None,
+        description=(
+            "Override BOT_PERSONALITY entirely with a literal system prompt. "
+            "Useful when the prompt is private and you don't want it in git."
+        ),
+    )
+    CUSTOM_SYSTEM_PROMPT_FILE: str | None = Field(
+        default=None,
+        description=(
+            "Path to a personality file to load instead of BOT_PERSONALITY. "
+            "Useful for prompts too long for an env var, or for keeping the "
+            "file outside this repo."
+        ),
+    )
+
     # OpenAI (used when LLM_PROVIDER=openai or for OpenRouter base URL)
     OPENAI_API_KEY: str | None = Field(
         default=None,
@@ -164,7 +196,11 @@ class Config(BaseSettings):
     )
     SYSTEM_PROMPT: str | None = Field(
         default=None,
-        description="Override system prompt (None = use default Lain personality)"
+        description=(
+            "[deprecated] Legacy alias of CUSTOM_SYSTEM_PROMPT. Still honored "
+            "for backwards compatibility. Prefer CUSTOM_SYSTEM_PROMPT in new "
+            "deployments — the personality system replaces this."
+        ),
     )
     
     # Context / Storage

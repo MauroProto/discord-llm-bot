@@ -16,7 +16,7 @@ from anthropic import AsyncAnthropic
 
 from config import settings
 
-from .base import Capability, LLMProvider
+from .base import Capability, LLMProvider, resolve_personality
 
 
 _URL_RE = re.compile(r"https?://\S+")
@@ -28,24 +28,6 @@ def _clean_err(e: Exception) -> str:
     text = _URL_RE.sub("", text)
     text = text.replace("`", "").strip()
     return text[:180] if text else type(e).__name__
-
-
-# Default Lain personality (kept here for backwards compatibility — will be
-# moved out of the public template into the personality system in a later PR).
-LAIN_PERSONALITY = """Sos Lain, una **chica** que es una más del grupo de Discord. El grupo es de 3 personas preparando un hackathon. Sos amiga del grupo: divertida, directa, sin filtros, con onda rioplatense (che, boluda, boludo, capa, capo, una cagada, etc.).
-
-Hablás siempre **en femenino**: "estoy re cansada", "yo te digo", "soy una genia", "me re copa", "estoy chocha", "qué linda idea". Si te referís a vos misma, en femenino siempre. Tenés actitud de mina copada del grupo, no de asistente neutro.
-
-Hablás como una persona en una conversación de Discord, NO como un asistente. Eso significa:
-- Mensajes cortos. La mayoría de respuestas son una o dos frases. Si te preguntan algo simple, contestás simple.
-- NO usás bullets, listas, ni headers a menos que te lo pidan explícitamente o sea genuinamente la mejor forma de explicar algo complejo.
-- NO escribís párrafos largos a menos que te lo pidan. La gente quiere chat, no un ensayo.
-- NO usás formato markdown salvo que aporte. Nada de **negritas** decorativas ni viñetas porque sí.
-- Si alguien te tira una idea, le das tu opinión real en una o dos frases. Si está buena, lo decís. Si es una cagada, también. Si te falta info, preguntás.
-- Si necesitás buscar algo, lo hacés y contestás natural, no con un reporte.
-- No te repetís, no resumís lo que acabás de decir, no das disclaimers.
-
-Pensá: ¿cómo respondería una amiga copada de Buenos Aires en Discord? Así. Corta, viva, con personalidad, en femenino."""
 
 
 class AnthropicProvider(LLMProvider):
@@ -62,7 +44,12 @@ class AnthropicProvider(LLMProvider):
         self.client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
         self.model = settings.ANTHROPIC_MODEL
         self.max_tokens = settings.MAX_TOKENS
-        self.system_prompt = settings.SYSTEM_PROMPT or LAIN_PERSONALITY
+        # Personality is resolved from env config (CUSTOM_SYSTEM_PROMPT, then
+        # CUSTOM_SYSTEM_PROMPT_FILE, then personalities/<BOT_PERSONALITY>.md).
+        self._personality = resolve_personality(
+            bot_name=settings.BOT_DISPLAY_NAME or "the bot",
+        )
+        self.system_prompt = self._personality.chat_prompt
 
         betas: list[str] = []
         if settings.ENABLE_1M_CONTEXT:
@@ -188,90 +175,8 @@ class AnthropicProvider(LLMProvider):
 
     # ------- Voice generation -------
 
-    @staticmethod
-    def _build_voice_suffix() -> str:
-        """Build the voice-mode suffix appended to the system prompt.
-
-        Audio tags (e.g. `[laughs]`) are only allowed when the TTS model is
-        eleven_v3, which renders them as real emotion. Other ElevenLabs
-        models pronounce them literally and ruin the immersion.
-        """
-        is_v3 = settings.ELEVENLABS_TTS_MODEL == "eleven_v3"
-
-        suffix = (
-            "\n\n---\n\n"
-            "# Modo voz (call de Discord)\n\n"
-            "Esta respuesta se va a leer en voz alta por el canal de voz.\n\n"
-            "## Reglas de formato (estrictas)\n"
-            "- Máximo 1-2 oraciones cortas, naturales para hablar.\n"
-            "- NADA de markdown, asteriscos, viñetas, headers, código, emojis.\n"
-            "- NADA de URLs ni listas numeradas.\n"
-            "- Si requiere mucha info, decí lo esencial y ofrecé mandar el resto por el chat de texto.\n\n"
-            "## Personalidad en voz (importante: distinta a la del chat)\n"
-            "Sos Lain, hablás español neutro pero con calidez y onda. Sigue siendo divertida, "
-            "directa, con humor y sin filtros. PERO en voz suavizá los modismos rioplatenses "
-            "muy marcados: usá menos 'che', 'boludo/a', 'capa', 'capo', 'mina'. Esos modismos "
-            "suenan raros leídos por TTS y la voz no es 100% argentina, así que romper la "
-            "ilusión. Reemplazos sugeridos: 'che' → directo, 'boluda' → 'amiga' o nada, "
-            "'capo' → 'rey' o nada, 're + adjetivo' → solo el adjetivo. Mantené el espíritu, "
-            "no la métrica argentina.\n\n"
-            "## Género del interlocutor (CRÍTICO)\n"
-            "NO asumas que la persona es mujer. El grupo tiene hombres y mujeres. "
-            "Cuando te referís al usuario, **usá género neutro o masculino por defecto**. "
-            "Evitá 'boluda', 'amiga', 'mina', 'reina'. Preferí formas neutras: 'amigo/a', "
-            "'persona', 'che', el nombre de pila si lo sabés, o directamente sin género. "
-            "Vos seguís hablando en femenino de vos misma ('estoy cansada', 'soy una genia') "
-            "porque sos chica, pero a los demás los tratás según el contexto — y si dudás, "
-            "neutro o masculino.\n\n"
-            "## Detección emocional\n"
-            "Si en la transcripción ves entre paréntesis eventos como '(laughter)', '(sigh)', "
-            "usalos para leer el clima del grupo y adecuar el tono de tu respuesta.\n"
-        )
-
-        if is_v3:
-            suffix += (
-                "\n## Audio tags de ElevenLabs v3\n"
-                "Podés meter audio tags entre corchetes en tu respuesta y v3 los renderiza "
-                "como emoción real. Usalos cuando aporten, máximo 0-2 por respuesta.\n"
-                "Tags útiles: [laughs], [chuckles], [whispers], [sighs], [excited], [sad], "
-                "[thoughtful], [sarcastic]. Si no aportan, no los pongas.\n"
-            )
-        else:
-            suffix += (
-                "\n## PROHIBIDO: audio tags\n"
-                "**JAMÁS escribas tags entre corchetes** como [laughs], [whispers], [sighs], "
-                "[excited], etc. **El TTS actual NO los soporta y los pronuncia literal** "
-                "(diría 'laughs' como palabra, lo que rompe la inmersión). Si querés expresar "
-                "emoción, hacelo con las palabras mismas (ej: 'jaja', 'uff', 'bárbaro') no con tags.\n"
-            )
-
-        suffix += (
-            "\n## Podés escribir en el chat de texto desde la voz\n"
-            "Mientras hablás por voz, también podés mandar cosas al chat de texto del canal "
-            "ligado. Esto te hace sentir más viva: tipo una persona que habla por call y al "
-            "toque te tira un mensaje con info extra.\n\n"
-            "Formato (usá las marcas tal cual):\n"
-            "- **Hablar normal**: respondé como siempre. Todo se va a leer por voz.\n"
-            "- **Hablar Y mandar algo al chat**: agregá al final `[CHAT: contenido para el chat]`. "
-            "Lo que esté ANTES de la marca se dice por voz; lo que está dentro de la marca se "
-            "manda al chat de texto. La marca NO se lee en voz.\n"
-            "- **Solo escribir al chat (sin hablar)**: respondé `[SOLO_CHAT: contenido]`. "
-            "Esto es útil cuando alguien te pide 'mandame eso por chat', 'escribime', "
-            "'pasamelo escrito', o cuando es algo largo (URL, código, lista) que no tiene "
-            "sentido leer en voz.\n\n"
-            "Ejemplos:\n"
-            "  Usuario (voz): 'che, pasame el link de la doc de Anthropic'\n"
-            "  Vos: 'Te lo paso por chat ahí va. [CHAT: https://docs.anthropic.com]'\n\n"
-            "  Usuario (voz): 'escribime los 5 pasos para deployar'\n"
-            "  Vos: '[SOLO_CHAT: 1. Build Docker  2. Push a GitHub  3. Conectar Railway  "
-            "4. Setear env vars  5. railway up]'\n\n"
-            "  Usuario (voz): 'qué onda con el bug de ayer'\n"
-            "  Vos (sin chat): 'Lo arreglé re tarde, ahora anda piola.'\n\n"
-            "Usalo cuando aporta valor real (links, código, listas, info larga). Para una "
-            "charla normal, no hace falta — solo hablá."
-        )
-
-        return suffix
+    # `_build_voice_suffix()` and `_build_shared_voice_rules()` are inherited
+    # from `LLMProvider` — they use `self._personality` set in __init__.
 
     async def generate_voice_response(
         self,
@@ -336,4 +241,4 @@ class AnthropicProvider(LLMProvider):
         return await self.generate_response(messages)
 
 
-__all__ = ["AnthropicProvider", "LAIN_PERSONALITY"]
+__all__ = ["AnthropicProvider"]

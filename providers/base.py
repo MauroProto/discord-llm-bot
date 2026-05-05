@@ -13,6 +13,39 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from enum import Enum, auto
+from typing import TYPE_CHECKING
+
+from config import settings
+
+if TYPE_CHECKING:
+    from personalities import Personality
+
+
+def resolve_personality(bot_name: str = "the bot") -> "Personality":
+    """Pick the active personality based on env config.
+
+    Resolution order (from `personalities.loader.load_personality`):
+      1. `CUSTOM_SYSTEM_PROMPT` (literal text override)
+      2. `SYSTEM_PROMPT` (legacy alias of #1, deprecated)
+      3. `CUSTOM_SYSTEM_PROMPT_FILE` (file override)
+      4. `BOT_PERSONALITY` -> `personalities/{id}.md` (default 'friendly')
+
+    `bot_name` is substituted for `{{BOT_NAME}}` in the prompt.
+    """
+    from personalities import load_personality
+
+    # Honour the legacy SYSTEM_PROMPT env var as an alias of
+    # CUSTOM_SYSTEM_PROMPT. Done here (rather than in pydantic validators)
+    # so we can warn about it at the right moment.
+    if settings.SYSTEM_PROMPT and not settings.CUSTOM_SYSTEM_PROMPT:
+        # Stash into CUSTOM_SYSTEM_PROMPT so the loader sees it.
+        settings.CUSTOM_SYSTEM_PROMPT = settings.SYSTEM_PROMPT  # type: ignore[misc]
+
+    return load_personality(bot_name=bot_name)
+
+
+class Capability(Enum):
+    """Optional capabilities a provider may advertise via `supports()`."""
 
 
 class Capability(Enum):
@@ -32,6 +65,83 @@ class LLMProvider(ABC):
     """Common interface every LLM provider exposes to the bot."""
 
     name: str
+
+    # Subclasses set this in __init__ via resolve_personality(...).
+    _personality: "Personality"
+
+    # ------- Shared voice suffix construction -------
+
+    @staticmethod
+    def _build_shared_voice_rules() -> str:
+        """Voice rules every personality inherits — audio tag handling per
+        TTS model and the `[CHAT:]/[SOLO_CHAT:]` inline marker contract.
+
+        These are system contract, not style: regardless of personality, the
+        bot must follow them so the voice pipeline works correctly.
+        """
+        is_v3 = settings.ELEVENLABS_TTS_MODEL == "eleven_v3"
+
+        rules = "\n\n## Voice mode shared rules (system contract)\n\n"
+
+        if is_v3:
+            rules += (
+                "### Audio tags (ElevenLabs v3)\n"
+                "You may include audio tags in square brackets — v3 renders them as real "
+                "emotion. Use them when they add something, max 0-2 per reply.\n"
+                "Useful tags: [laughs], [chuckles], [whispers], [sighs], [excited], [sad], "
+                "[thoughtful], [sarcastic]. Don't sprinkle them.\n\n"
+            )
+        else:
+            rules += (
+                "### No audio tags\n"
+                "**Never write bracketed audio tags** like [laughs], [whispers], [sighs], "
+                "[excited], etc. The current TTS model pronounces them literally (it would "
+                "say the word 'laughs' out loud) which breaks immersion. Express emotion "
+                "with words instead (e.g. 'haha', 'phew').\n\n"
+            )
+
+        rules += (
+            "### Sending to the text chat from voice\n"
+            "While speaking on the call, you can also write to the linked text channel. "
+            "This makes you feel more present — like someone on a call who drops a useful "
+            "message in chat alongside speaking.\n\n"
+            "Use these markers (literal syntax):\n"
+            "- **Speak normally**: just reply. Everything is spoken via TTS.\n"
+            "- **Speak AND send to chat**: end with `[CHAT: content for the chat]`. "
+            "Anything BEFORE the marker is spoken aloud; the marker's contents go to the "
+            "text channel. The marker itself is not read aloud.\n"
+            "- **Only send to chat (don't speak)**: reply with `[SOLO_CHAT: content]`. "
+            "Useful when the user asks you to 'send it in chat' or when the answer is a "
+            "URL, code block, or long list that doesn't belong in speech.\n\n"
+            "Examples:\n"
+            "  User (voice): 'send me the API docs link'\n"
+            "  You: 'Sending it in chat. [CHAT: https://example.com/docs]'\n\n"
+            "  User (voice): 'write out the 5 deploy steps'\n"
+            "  You: '[SOLO_CHAT: 1. Build  2. Push  3. Connect Railway  4. Set env vars  5. Deploy]'\n\n"
+            "  User (voice): 'how was yesterday's bug'\n"
+            "  You (no chat): 'Fixed it late, runs fine now.'\n\n"
+            "Use it when it adds real value (links, code, lists, long info). For normal "
+            "chat back-and-forth, just speak — no markers needed.\n"
+        )
+
+        return rules
+
+    def _build_voice_suffix(self) -> str:
+        """Append the personality's voice section + shared system contract."""
+        suffix = "\n\n---\n\n# Voice mode\n\n"
+
+        personality_voice = getattr(self, "_personality", None)
+        if personality_voice and personality_voice.voice_section:
+            suffix += personality_voice.voice_section + "\n"
+        else:
+            suffix += (
+                "This response will be played through TTS. Keep it to 1-2 short, natural "
+                "sentences. No markdown, no URLs, no lists, no emojis — TTS reads them "
+                "literally. For long answers, route them to chat (see shared rules below).\n"
+            )
+
+        suffix += self._build_shared_voice_rules()
+        return suffix
 
     @abstractmethod
     async def generate_response(
