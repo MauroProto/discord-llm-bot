@@ -23,7 +23,7 @@ from typing import Any
 
 from config import settings
 
-from .base import Capability, LLMProvider
+from .base import Capability, LLMProvider, resolve_personality
 
 
 _URL_RE = re.compile(r"https?://\S+")
@@ -94,7 +94,10 @@ class OpenRouterProvider(LLMProvider):
 
         self.model = settings.OPENROUTER_MODEL or "anthropic/claude-haiku-4-5"
         self.max_tokens = settings.MAX_TOKENS
-        self.system_prompt = settings.SYSTEM_PROMPT or _DEFAULT_SYSTEM_PROMPT
+        self._personality = resolve_personality(
+            bot_name=settings.BOT_DISPLAY_NAME or "the bot",
+        )
+        self.system_prompt = self._personality.chat_prompt
 
         self.reasoning_enabled = settings.EXTENDED_THINKING
         self.reasoning_effort = settings.THINKING_EFFORT
@@ -260,8 +263,7 @@ class OpenRouterProvider(LLMProvider):
         original_model = self.model
 
         try:
-            from .anthropic_provider import AnthropicProvider
-            self.system_prompt = original_system + AnthropicProvider._build_voice_suffix()
+            self.system_prompt = original_system + self._build_voice_suffix()
 
             self.reasoning_enabled = settings.VOICE_EXTENDED_THINKING
             self.reasoning_effort = settings.VOICE_THINKING_EFFORT
@@ -296,13 +298,6 @@ class OpenRouterProvider(LLMProvider):
             "content": f"{task}\n\nConversation:\n{history_text}",
         }]
         return await self.generate_response(messages)
-
-
-_DEFAULT_SYSTEM_PROMPT = (
-    "You are a helpful Discord assistant. Respond conversationally — keep "
-    "answers concise unless explicitly asked for detail. Avoid markdown unless "
-    "it genuinely improves clarity. Match the tone of the channel you're in."
-)
 
 
 __all__ = ["OpenRouterProvider"]

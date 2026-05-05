@@ -15,10 +15,9 @@ benefit by changing one env var — no code changes here.
 from __future__ import annotations
 
 from providers import get_provider
-from providers.anthropic_provider import LAIN_PERSONALITY  # re-exported for compat
 
 # Resolve the configured provider once. `get_provider` is itself cached so
 # subsequent calls anywhere reuse the same instance.
 claude_client = get_provider()
 
-__all__ = ["claude_client", "LAIN_PERSONALITY"]
+__all__ = ["claude_client"]

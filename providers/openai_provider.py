@@ -21,7 +21,7 @@ from typing import Any
 
 from config import settings
 
-from .base import Capability, LLMProvider
+from .base import Capability, LLMProvider, resolve_personality
 
 
 _URL_RE = re.compile(r"https?://\S+")
@@ -87,7 +87,10 @@ class OpenAIProvider(LLMProvider):
         # needs can pick o3 / o4-mini explicitly via env var.
         self.model = settings.OPENAI_MODEL or "gpt-5.4"
         self.max_tokens = settings.MAX_TOKENS
-        self.system_prompt = settings.SYSTEM_PROMPT or _DEFAULT_SYSTEM_PROMPT
+        self._personality = resolve_personality(
+            bot_name=settings.BOT_DISPLAY_NAME or "the bot",
+        )
+        self.system_prompt = self._personality.chat_prompt
 
         # Reasoning is configured per call. We just snapshot the global
         # settings here; voice mode overrides them temporarily.
@@ -265,11 +268,11 @@ class OpenAIProvider(LLMProvider):
         original_model = self.model
 
         try:
-            # Append the same shared voice suffix the Anthropic provider
-            # uses. Personality + voice rules live in the prompt; the model
-            # follows them regardless of provider.
-            from .anthropic_provider import AnthropicProvider
-            self.system_prompt = original_system + AnthropicProvider._build_voice_suffix()
+            # Append the personality's voice section + shared rules
+            # (inherited from LLMProvider). Personality + voice contract
+            # live in the prompt; the model follows them regardless of
+            # which provider runs them.
+            self.system_prompt = original_system + self._build_voice_suffix()
 
             # Voice mode: disable reasoning by default for low latency.
             self.reasoning_enabled = settings.VOICE_EXTENDED_THINKING
@@ -305,11 +308,4 @@ class OpenAIProvider(LLMProvider):
 
 # Fallback system prompt when SYSTEM_PROMPT is not set and no personality
 # system is wired up yet. Replaced in PR5 with the personality loader.
-_DEFAULT_SYSTEM_PROMPT = (
-    "You are a helpful Discord assistant. Respond conversationally — keep "
-    "answers concise unless explicitly asked for detail. Avoid markdown unless "
-    "it genuinely improves clarity. Match the tone of the channel you're in."
-)
-
-
 __all__ = ["OpenAIProvider"]
