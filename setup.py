@@ -664,9 +664,156 @@ def print_summary(values: dict[str, str], discord_id: str, provider_label: str,
     print()
 
 
+# ---------- Doctor mode ----------
+
+def cmd_doctor() -> int:
+    """Diagnose the install: Python, system deps, .env keys."""
+    banner(
+        "🩺  discord-llm-bot — Doctor",
+        "Read-only health check. No changes written.",
+    )
+
+    issues = 0
+
+    section("Python")
+    py_ok, py_msg = check_python_version()
+    (ok if py_ok else fail)(py_msg)
+    if not py_ok:
+        issues += 1
+
+    section("System dependencies (voice)")
+    for cmd, hint_pkg in [("ffmpeg", "ffmpeg"), ("git", "git")]:
+        if check_command(cmd):
+            ok(f"{cmd} found")
+        else:
+            fail(f"{cmd} missing → {system_install_hint(hint_pkg)}")
+            issues += 1
+
+    section(".env file")
+    if not ENV_PATH.exists():
+        fail(f"{ENV_PATH.name} not found — run: python3 setup.py")
+        return 1
+    values = parse_env(ENV_PATH)
+    ok(f"{ENV_PATH.name} loaded ({len(values)} keys)")
+
+    section("Discord token")
+    token = values.get("DISCORD_BOT_TOKEN", "")
+    if not token:
+        fail("DISCORD_BOT_TOKEN is empty")
+        issues += 1
+    else:
+        ok_, msg = validate_discord_token(token)
+        (ok if ok_ else fail)(msg)
+        if not ok_:
+            issues += 1
+
+    section(f"LLM provider ({values.get('LLM_PROVIDER', '?')})")
+    provider = values.get("LLM_PROVIDER", "anthropic")
+    if provider in PROVIDER_VALIDATORS:
+        env_var, validator = PROVIDER_VALIDATORS[provider]
+        key = values.get(env_var, "")
+        if not key:
+            fail(f"{env_var} is empty")
+            issues += 1
+        else:
+            ok_, msg = validator(key)
+            (ok if ok_ else warn)(msg)
+    elif provider == "ollama":
+        url = values.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+        info(f"Ollama URL: {url}")
+        if check_command("ollama"):
+            ok("`ollama` binary on PATH")
+        else:
+            warn("`ollama` not on PATH (the bot connects via HTTP, but you'll want this to pull models)")
+    elif provider == "codex_cli":
+        if check_command("codex"):
+            ok("`codex` binary on PATH")
+        else:
+            fail("`codex` binary missing — npm install -g @openai/codex && codex login")
+            issues += 1
+
+    if values.get("ENABLE_VOICE", "").lower() in ("true", "1", "yes"):
+        section("Voice")
+        if values.get("ELEVENLABS_API_KEY"):
+            ok_, msg = validate_elevenlabs_key(values["ELEVENLABS_API_KEY"])
+            (ok if ok_ else warn)(msg)
+        else:
+            fail("ENABLE_VOICE=true but ELEVENLABS_API_KEY is empty")
+            issues += 1
+
+    print()
+    if issues == 0:
+        cprint("✓ All checks passed — you're good to go.", C.GREEN, bold=True)
+        return 0
+    cprint(f"✗ {issues} issue(s) found.", C.RED, bold=True)
+    return 1
+
+
+# ---------- Non-interactive (read everything from environment) ----------
+
+def cmd_from_env() -> int:
+    """Build a .env from the process environment, no prompts.
+
+    Useful in Docker / CI / first-boot scripts. Validates the keys it has,
+    skips prompts. Anything missing → leaves the placeholder.
+    """
+    banner(
+        "🤖  discord-llm-bot — Non-interactive setup",
+        "Reading values from the environment.",
+    )
+
+    values = parse_env(ENV_PATH)
+    keys = [
+        "DISCORD_BOT_TOKEN", "ALLOWED_GUILD_ID", "VOICE_CHANNEL_ID",
+        "LLM_PROVIDER",
+        "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL",
+        "OPENAI_API_KEY", "OPENAI_MODEL",
+        "GOOGLE_API_KEY", "GEMINI_MODEL",
+        "OPENROUTER_API_KEY", "OPENROUTER_MODEL",
+        "OLLAMA_BASE_URL", "OLLAMA_MODEL",
+        "CODEX_CLI_MODEL",
+        "BOT_PERSONALITY", "BOT_DISPLAY_NAME",
+        "CUSTOM_SYSTEM_PROMPT", "CUSTOM_SYSTEM_PROMPT_FILE",
+        "ENABLE_VOICE", "ELEVENLABS_API_KEY", "ELEVENLABS_VOICE_ID",
+        "STREAMING_REPLIES", "EXTENDED_THINKING",
+        "MCP_SERVERS_JSON", "MCP_TOOL_FILTERS_JSON",
+    ]
+    picked = 0
+    for k in keys:
+        env_v = os.environ.get(k)
+        if env_v is not None and env_v != "":
+            values[k] = env_v
+            picked += 1
+    info(f"Picked up {picked} value(s) from the environment.")
+
+    path = write_env(values)
+    ok(f"Wrote {path.name}")
+    print()
+    cprint("Run `python3 setup.py doctor` to validate.", C.DIM)
+    return 0
+
+
 # ---------- Entry point ----------
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    args = argv if argv is not None else sys.argv[1:]
+    cmd = (args[0] if args else "wizard").lower()
+
+    if cmd in ("doctor", "check", "diagnose", "diag"):
+        try:
+            return cmd_doctor()
+        except KeyboardInterrupt:
+            return 130
+    if cmd in ("from-env", "from_env", "noninteractive", "non-interactive"):
+        return cmd_from_env()
+    if cmd in ("--help", "-h", "help"):
+        print("usage: setup.py [wizard|doctor|from-env|help]")
+        print()
+        print("  wizard     interactive setup (default)")
+        print("  doctor     read-only health check of the current install")
+        print("  from-env   build .env from process environment (Docker/CI)")
+        return 0
+
     try:
         os.system("clear" if os.name != "nt" else "cls")
         banner(

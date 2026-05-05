@@ -59,3 +59,37 @@ This project runs as a Discord bot with access to:
 - Run the bot in a sandboxed environment (container, VM, or restricted user) — it executes with whatever privileges its process has.
 - Keep dependencies up to date (`pip install --upgrade --pre -r requirements.txt`).
 - Monitor your provider dashboards for unexpected usage spikes.
+
+## About the `curl | bash` installer
+
+The README recommends:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/MauroProto/discord-llm-bot/main/scripts/install.sh | bash
+```
+
+This pattern is convenient but asks you to trust this repo and GitHub's TLS chain. If you'd rather inspect before executing — recommended for any `curl | bash` from any project, ours included — do this:
+
+```bash
+# 1. Fetch the script
+curl -fsSL -o install.sh \
+  https://raw.githubusercontent.com/MauroProto/discord-llm-bot/main/scripts/install.sh
+
+# 2. Read it (it's ~250 lines of plain Bash, no obfuscation)
+less install.sh
+
+# 3. Run it once you're satisfied
+bash install.sh
+```
+
+What the installer touches on your machine:
+
+| Path | What gets written |
+|---|---|
+| `~/.discord-llm-bot/` | Cloned repo + Python venv (override with `DISCORD_LLM_BOT_DIR`) |
+| `~/.local/bin/discord-llm-bot` | Launcher shim (override with `DISCORD_LLM_BOT_BIN_DIR`) |
+| System packages | `ffmpeg`, `opus`/`libopus0`, `libsodium` via `brew` or `apt` (will prompt for `sudo` on Linux) |
+
+It does **not** modify your shell profile, write outside the dirs above, or reach out to any non-GitHub host. It pulls Python deps from PyPI — review `requirements.txt` if you want to audit those.
+
+The installer pins to the `main` branch. If you want a specific commit, set `DISCORD_LLM_BOT_BRANCH=<sha>` before running.

@@ -195,8 +195,14 @@ cd "\$INSTALL_DIR" || exit 1
 # shellcheck disable=SC1091
 source "\$INSTALL_DIR/.venv/bin/activate"
 case "\${1:-run}" in
-  setup|configure|reconfigure)
+  setup|configure|reconfigure|wizard)
     exec python3 setup.py
+    ;;
+  doctor|check|diag)
+    exec python3 setup.py doctor
+    ;;
+  from-env|noninteractive)
+    exec python3 setup.py from-env
     ;;
   update)
     git -C "\$INSTALL_DIR" pull --ff-only
@@ -207,6 +213,18 @@ case "\${1:-run}" in
     ;;
   path)
     echo "\$INSTALL_DIR"
+    ;;
+  help|--help|-h)
+    cat <<'HELP'
+discord-llm-bot — usage:
+  discord-llm-bot              start the bot
+  discord-llm-bot setup        interactive setup wizard
+  discord-llm-bot doctor       read-only health check
+  discord-llm-bot from-env     build .env from current environment
+  discord-llm-bot update       git pull + reinstall deps
+  discord-llm-bot path         print install dir
+  discord-llm-bot help         this message
+HELP
     ;;
   *)
     exec python3 "\$@"

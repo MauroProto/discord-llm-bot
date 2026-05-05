@@ -2,12 +2,13 @@
 
 # discord-llm-bot
 
-A self-hosted Discord bot that talks via **Claude, GPT, Gemini, or OpenRouter** — your choice — with optional **voice channel support** (ElevenLabs TTS + Scribe STT) and a **single unified memory store** across text and voice.
+A self-hosted Discord bot that talks via **Claude, GPT, Gemini, OpenRouter, Ollama, or your ChatGPT subscription** — your choice — with optional **voice channel support** (ElevenLabs TTS + Scribe STT) and a **single unified memory store** across text and voice.
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![discord.py](https://img.shields.io/badge/discord.py-2.7-5865F2.svg?logo=discord&logoColor=white)](https://github.com/Rapptz/discord.py)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Deploy on Railway](https://img.shields.io/badge/Railway-deployable-0B0D0E.svg?logo=railway&logoColor=white)](https://railway.app/)
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https%3A%2F%2Fgithub.com%2FMauroProto%2Fdiscord-llm-bot&envs=DISCORD_BOT_TOKEN%2CALLOWED_GUILD_ID%2CLLM_PROVIDER%2CANTHROPIC_API_KEY%2COPENAI_API_KEY%2CGOOGLE_API_KEY%2COPENROUTER_API_KEY%2CBOT_PERSONALITY%2CENABLE_VOICE%2CELEVENLABS_API_KEY&DISCORD_BOT_TOKENDesc=Discord+bot+token&LLM_PROVIDERDesc=anthropic+%7C+openai+%7C+gemini+%7C+openrouter+%7C+ollama+%7C+codex_cli&LLM_PROVIDERDefault=anthropic&BOT_PERSONALITYDefault=friendly&ENABLE_VOICEDefault=false)
 
 </div>
 
@@ -98,7 +99,7 @@ Connect this repo, the `Dockerfile` and `railway.json` are picked up automatical
 
 ## Switching providers
 
-Set `LLM_PROVIDER` to one of `anthropic | openai | gemini | openrouter` and provide the matching key. Examples:
+Set `LLM_PROVIDER` to one of `anthropic | openai | gemini | openrouter | ollama | codex_cli` and provide the matching key (or none, for local/subscription paths).
 
 ```bash
 # Anthropic Claude (default)
@@ -122,9 +123,19 @@ OPENROUTER_API_KEY=sk-or-...
 OPENROUTER_MODEL=anthropic/claude-opus-4-7
 # Append :online to the model id to enable web search:
 # OPENROUTER_MODEL=openai/gpt-5.4:online
+
+# Ollama (local, free, no API key)
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434/v1
+OLLAMA_MODEL=llama3.3
+
+# Codex CLI (use your ChatGPT Plus/Pro subscription via the local `codex` binary)
+LLM_PROVIDER=codex_cli
+CODEX_CLI_MODEL=gpt-5-codex
+# Run `codex login` once on the host. See "Subscription mode" below.
 ```
 
-You can also point a **different** model at voice replies — e.g. flagship in chat, mini/flash in voice — via `VOICE_OPENAI_MODEL`, `VOICE_GEMINI_MODEL`, `VOICE_OPENROUTER_MODEL`, or `VOICE_CLAUDE_MODEL`.
+You can also point a **different** model at voice replies — e.g. flagship in chat, mini/flash in voice — via `VOICE_OPENAI_MODEL`, `VOICE_GEMINI_MODEL`, `VOICE_OPENROUTER_MODEL`, `VOICE_CLAUDE_MODEL`, `VOICE_OLLAMA_MODEL`, or `VOICE_CODEX_CLI_MODEL`.
 
 ## Pick a personality
 
@@ -148,19 +159,61 @@ CUSTOM_SYSTEM_PROMPT_FILE=/etc/secrets/my-personality.md
 
 ## Commands
 
-| Command | Aliases | What it does |
-|---|---|---|
-| `@bot <message>` | — | Reply with full chat context + long-term memory |
-| `!summary [N]` | `!resumen` | Summarise the last *N* messages (default 50) |
-| `!context` | `!contexto` | Send today's saved `.md` context file |
-| `!search <query>` | `!buscar` | Manual web search via the configured fallback |
-| `!join` | — | Join the voice channel (uses `VOICE_CHANNEL_ID` if set) |
-| `!leave` | — | Leave the voice channel |
-| `!say <text>` | `!sayvoz` | Force a TTS line in the current VC |
-| `!info` | `!lain` | Bot info (provider, model, personality) |
-| `!help` | `!helpbot` | List commands |
+Both **prefix** (`!command`) and **slash** (`/command`) commands are registered. Slash commands give you the native autocomplete UI; prefix commands keep working for muscle memory.
+
+| Slash | Prefix | Aliases | What it does |
+|---|---|---|---|
+| — | `@bot <message>` | — | Reply with full chat context + long-term memory |
+| `/summary` | `!summary [N]` | `!resumen` | Summarise the last *N* messages (default 50) |
+| `/context` | `!context` | `!contexto` | Send today's saved `.md` context file |
+| `/search` | `!search <query>` | `!buscar` | Manual web search via the configured fallback |
+| `/join` | `!join` | — | Join the voice channel (uses `VOICE_CHANNEL_ID` if set) |
+| `/leave` | `!leave` | — | Leave the voice channel |
+| `/say` | `!say <text>` | `!sayvoz` | Force a TTS line in the current VC |
+| `/info` | `!info` | `!lain` | Bot info (provider, model, personality) |
+| `/help` | `!help` | `!helpbot` | List commands |
 
 You can also trigger voice with natural language: `@bot join voice` or `@bot leave the call`.
+
+### Streaming replies
+
+When `STREAMING_REPLIES=true` (default), Discord messages are **edited in place** as the LLM generates — same UX as ChatGPT or Claude.ai, except inside Discord. Updates are rate-limited to one edit every 600 ms to stay well under Discord's edit limits. Toggle off if you prefer a single final post.
+
+### MCP (Anthropic only, beta)
+
+Set `MCP_SERVERS_JSON` to connect Claude to remote [Model Context Protocol](https://modelcontextprotocol.io/) servers. The Anthropic Messages API hosts the connector server-side — you don't run an MCP client.
+
+```jsonc
+// MCP_SERVERS_JSON
+[
+  {"name": "github", "url": "https://mcp.github.com/sse", "authorization_token": "ghp_..."},
+  {"name": "notion", "url": "https://mcp.notion.com/sse", "authorization_token": "secret_..."}
+]
+```
+
+Optional per-server allow/deny via `MCP_TOOL_FILTERS_JSON`:
+
+```jsonc
+{
+  "github": {"deny": ["delete_repo", "delete_issue"]},
+  "notion": {"allow": ["search", "read_page"]}
+}
+```
+
+Other providers silently ignore MCP — switch to `LLM_PROVIDER=anthropic` to use it.
+
+### Subscription mode (Codex CLI)
+
+If you already pay for ChatGPT Plus/Pro and want the bot to use your subscription quota instead of pay-as-you-go API:
+
+```bash
+npm install -g @openai/codex
+codex login                  # interactive; on a headless box: codex login --device-auth
+LLM_PROVIDER=codex_cli
+CODEX_CLI_MODEL=gpt-5-codex
+```
+
+The bot spawns the local `codex` binary as a child process; requests count against your subscription. **Trade-offs**: the binary must be on the host, subscription quotas are tighter than API, and you can't easily run this on Railway/Fly without baking the binary into the image and refreshing `~/.codex/auth.json` manually. See the [Subscription auth FAQ](#why-not-subscriptions) below for the full picture.
 
 ## Architecture
 
@@ -226,15 +279,17 @@ See [`.env.example`](.env.example) for the full list with comments. The most use
 
 | Variable | Default | Notes |
 |---|---|---|
-| `LLM_PROVIDER` | `anthropic` | `anthropic` \| `openai` \| `gemini` \| `openrouter` |
+| `LLM_PROVIDER` | `anthropic` | `anthropic` \| `openai` \| `gemini` \| `openrouter` \| `ollama` \| `codex_cli` |
 | `BOT_PERSONALITY` | `friendly` | One of `friendly` \| `snarky` \| `analyst`, or any file in `personalities/` |
 | `BOT_DISPLAY_NAME` | live username | Substituted for `{{BOT_NAME}}` in the prompt |
+| `STREAMING_REPLIES` | `true` | Edit Discord messages in place as the LLM generates |
 | `EXTENDED_THINKING` | `true` | Reasoning in chat mode |
 | `VOICE_EXTENDED_THINKING` | `false` | Off in voice mode for low latency |
 | `VOICE_SILENCE_MS` | `1000` | Silence (ms) that closes a turn |
 | `VOICE_IDLE_TIMEOUT_SECONDS` | `120` | Auto-leave the VC if nobody speaks |
 | `VOICE_MEMORY_MAX_CHARS` | `-1` | `-1` = full memory; `0` = none (faster) |
 | `MEMORY_DAYS` | `14` | How many days of saved context to inject as long-term memory |
+| `MCP_SERVERS_JSON` | — | JSON array of remote MCP servers (Anthropic only) |
 | `LEGACY_SELF_PREFIXES` | — | Optional CSV of historical bot names if you renamed the bot |
 
 ## Storage
@@ -265,9 +320,12 @@ For Railway, mount a persistent volume on `/app/data`. For local Docker, the inc
 
 | File | Purpose |
 |---|---|
-| `bot.py` | Discord event handlers, command definitions, entrypoint |
+| `bot.py` | Discord event handlers, prefix + slash commands, entrypoint, streaming dispatch |
 | `config.py` | Pydantic settings loader |
-| `providers/` | LLM provider abstraction — Anthropic, OpenAI, Gemini, OpenRouter |
+| `providers/` | LLM provider abstraction — Anthropic, OpenAI, Gemini, OpenRouter, Ollama, Codex CLI |
+| `mcp_config.py` | Parses `MCP_SERVERS_JSON` into Anthropic's `mcp_servers` + `mcp_toolset` payload |
+| `setup.py` | Interactive setup wizard (curses TUI + ANSI fallback) |
+| `scripts/install.sh` | One-line installer (clones, venv, deps, launcher, wizard) |
 | `personalities/` | Personality presets and loader |
 | `context_manager.py` | Reads channel history, persists daily `.md`, loads long-term memory |
 | `elevenlabs_client.py` | HTTP client for ElevenLabs TTS and Scribe STT |
@@ -283,12 +341,15 @@ For Railway, mount a persistent volume on `/app/data`. For local Docker, the inc
 
 ## Roadmap
 
+- [x] Slash commands (alongside prefix commands)
+- [x] Streaming text replies (Discord message edited in place)
+- [x] Ollama provider for self-hosted local models
+- [x] MCP (Anthropic native server-side connector)
+- [x] Codex CLI provider (use ChatGPT subscription)
 - [ ] Streaming TTS (start playback while the LLM is still generating)
-- [ ] Streaming STT (Deepgram / AssemblyAI) for sub-2 s latency
+- [ ] Streaming STT (Deepgram / AssemblyAI) for sub-2 s voice latency
 - [ ] Smart barge-in (interrupt the bot only with sustained voice activity)
 - [ ] Per-user voice profiles (different ElevenLabs voices for different roles)
-- [ ] Slash commands `/join`, `/leave`, etc. instead of prefix commands
-- [ ] Ollama provider for self-hosted local models
 
 ## Security
 
