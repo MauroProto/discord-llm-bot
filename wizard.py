@@ -128,14 +128,20 @@ def info(msg: str) -> None:
 def ask(prompt: str, default: str = "", secret: bool = False) -> str:
     suffix = f" {C.DIM}[{default}]{C.RESET}" if default else ""
     print(f"{C.YELLOW}? {prompt}{suffix}{C.RESET} ", end="", flush=True)
-    if secret:
-        try:
-            import getpass
-            val = getpass.getpass("")
-        except Exception:
+    try:
+        if secret:
+            try:
+                import getpass
+                val = getpass.getpass("")
+            except Exception:
+                val = input()
+        else:
             val = input()
-    else:
-        val = input()
+    except EOFError:
+        # stdin closed (scripted input exhausted, or Ctrl-D). Re-raise as
+        # KeyboardInterrupt so main()'s handler exits cleanly with the
+        # standard "Aborted" message instead of a traceback.
+        raise KeyboardInterrupt
     return val.strip() or default
 
 
