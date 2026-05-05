@@ -16,6 +16,11 @@ env/
 .mypy_cache/
 .ruff_cache/
 
+# Build artifacts (pipx, pip wheel, sdist)
+build/
+dist/
+*.egg-info/
+
 # Bot data
 data/
 *.log

@@ -1005,7 +1005,7 @@ def _run() -> int:
     if not settings.DISCORD_BOT_TOKEN:
         print(
             "\n  \033[31m✗\033[0m DISCORD_BOT_TOKEN is empty.\n"
-            "    Set it in .env or run: python3 setup.py\n",
+            "    Set it in .env or run: discord-llm-bot setup\n",
             flush=True,
         )
         return 1

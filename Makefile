@@ -1,5 +1,5 @@
 # Convenience targets for local development. None of these are required —
-# everything still works with `python3 setup.py` and `python3 bot.py`.
+# everything still works with `python3 wizard.py` and `python3 bot.py`.
 
 PYTHON ?= python3
 VENV   ?= .venv
@@ -28,10 +28,10 @@ install: $(VENV)/bin/activate
 	$(PIP) install --pre -r requirements.txt
 
 setup: install
-	$(PY) setup.py
+	$(PY) wizard.py
 
 doctor: $(VENV)/bin/activate
-	$(PY) setup.py doctor
+	$(PY) wizard.py doctor
 
 run: $(VENV)/bin/activate
 	$(PY) bot.py
@@ -53,7 +53,7 @@ clean:
 
 test: install
 	$(PY) -c "import ast, pathlib; \
-		[ast.parse(pathlib.Path(f).read_text()) for f in ['bot.py', 'voice_manager.py', 'elevenlabs_client.py', 'setup.py']]; \
+		[ast.parse(pathlib.Path(f).read_text()) for f in ['bot.py', 'voice_manager.py', 'elevenlabs_client.py', 'wizard.py']]; \
 		print('ok parse')"
 	$(PY) -c "import importlib; \
 		[importlib.import_module(m) for m in ['config', 'mcp_config', 'providers', 'personalities', 'context_manager', 'search_client']]; \

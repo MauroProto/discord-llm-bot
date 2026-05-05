@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Interactive setup wizard for discord-llm-bot.
 
-Run `python3 setup.py` to walk through Discord token, LLM provider,
-personality, voice, and deploy target — with live validation at every
-step. Writes a working `.env` so the bot starts on first try.
-
-Re-run anytime: `python3 setup.py reconfigure`.
+Invoked via `discord-llm-bot setup` (or `python3 wizard.py` for direct
+use). Walks the user through Discord token, LLM provider, personality,
+voice, and deploy target — with live validation at every step. Writes a
+working `.env` so the bot starts on first try.
 
 Single file, stdlib-only (curses + urllib + ssl). Falls back to a
 numbered text menu when stdin is not a TTY (Docker, CI, piped input).
@@ -680,7 +679,7 @@ def print_summary(values: dict[str, str], discord_id: str, provider_label: str,
                 masked = v if len(v) < 12 or k.endswith("_PROVIDER") or k.endswith("_MODEL") or k == "BOT_PERSONALITY" or k == "ENABLE_VOICE" else f"{v[:6]}…{v[-4:]}"
                 cprint(f"      {k}={masked}", C.DIM)
     print()
-    cprint("Re-run anytime: python3 setup.py", C.DIM)
+    cprint("Re-run anytime: discord-llm-bot setup", C.DIM)
     print()
 
 
@@ -711,7 +710,7 @@ def cmd_doctor() -> int:
 
     section(".env file")
     if not ENV_PATH.exists():
-        fail(f"{ENV_PATH.name} not found — run: python3 setup.py")
+        fail(f"{ENV_PATH.name} not found — run: discord-llm-bot setup")
         return 1
     values = parse_env(ENV_PATH)
     ok(f"{ENV_PATH.name} loaded ({len(values)} keys)")
@@ -809,7 +808,7 @@ def cmd_from_env() -> int:
     path = write_env(values)
     ok(f"Wrote {path.name}")
     print()
-    cprint("Run `python3 setup.py doctor` to validate.", C.DIM)
+    cprint("Run `discord-llm-bot doctor` to validate.", C.DIM)
     return 0
 
 
@@ -827,7 +826,7 @@ def main(argv: list[str] | None = None) -> int:
     if cmd in ("from-env", "from_env", "noninteractive", "non-interactive"):
         return cmd_from_env()
     if cmd in ("--help", "-h", "help"):
-        print("usage: setup.py [wizard|doctor|from-env|help]")
+        print("usage: wizard.py [wizard|doctor|from-env|help]")
         print()
         print("  wizard     interactive setup (default)")
         print("  doctor     read-only health check of the current install")

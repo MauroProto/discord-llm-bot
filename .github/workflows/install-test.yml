@@ -5,11 +5,14 @@ on:
     branches: [main]
     paths:
       - "scripts/install.sh"
-      - "setup.py"
+      - "wizard.py"
+      - "cli.py"
+      - "pyproject.toml"
       - "requirements.txt"
       - "bot.py"
       - "config.py"
       - "providers/**"
+      - "personalities/**"
       - ".github/workflows/install-test.yml"
   pull_request:
     branches: [main]
@@ -44,7 +47,9 @@ jobs:
         run: |
           set -e
           test -d "$DIR" && echo "ok install dir"
-          test -f "$DIR/setup.py" && echo "ok setup.py"
+          test -f "$DIR/wizard.py" && echo "ok wizard.py"
+          test -f "$DIR/cli.py" && echo "ok cli.py"
+          test -f "$DIR/pyproject.toml" && echo "ok pyproject.toml"
           test -f "$DIR/bot.py" && echo "ok bot.py"
           test -d "$DIR/.venv" && echo "ok venv"
           test -x "$BIN/discord-llm-bot" && echo "ok launcher"

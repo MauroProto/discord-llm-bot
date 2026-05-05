@@ -189,47 +189,26 @@ mkdir -p "$BIN_DIR"
 LAUNCHER="$BIN_DIR/discord-llm-bot"
 cat > "$LAUNCHER" <<EOF
 #!/usr/bin/env bash
-# Auto-generated launcher for discord-llm-bot
+# Auto-generated launcher for discord-llm-bot.
+#
+# All commands run in the install dir's venv so deps are isolated from the
+# system Python. The CLI itself (cli.py) handles dispatch — keep this
+# launcher thin so the pipx install path can mirror it via the entry
+# point declared in pyproject.toml.
 INSTALL_DIR="$INSTALL_DIR"
 cd "\$INSTALL_DIR" || exit 1
 # shellcheck disable=SC1091
 source "\$INSTALL_DIR/.venv/bin/activate"
-case "\${1:-run}" in
-  setup|configure|reconfigure|wizard)
-    exec python3 setup.py
-    ;;
-  doctor|check|diag)
-    exec python3 setup.py doctor
-    ;;
-  from-env|noninteractive)
-    exec python3 setup.py from-env
-    ;;
-  update)
-    git -C "\$INSTALL_DIR" pull --ff-only
-    pip install --pre --quiet -r requirements.txt
-    ;;
-  run|"")
-    exec python3 bot.py
-    ;;
-  path)
-    echo "\$INSTALL_DIR"
-    ;;
-  help|--help|-h)
-    cat <<'HELP'
-discord-llm-bot — usage:
-  discord-llm-bot              start the bot
-  discord-llm-bot setup        interactive setup wizard
-  discord-llm-bot doctor       read-only health check
-  discord-llm-bot from-env     build .env from current environment
-  discord-llm-bot update       git pull + reinstall deps
-  discord-llm-bot path         print install dir
-  discord-llm-bot help         this message
-HELP
-    ;;
-  *)
-    exec python3 "\$@"
-    ;;
-esac
+
+# `update` is a meta-command that operates on the install dir itself —
+# handle it here rather than in cli.py.
+if [ "\${1:-}" = "update" ]; then
+  git -C "\$INSTALL_DIR" pull --ff-only
+  exec pip install --pre --quiet -r "\$INSTALL_DIR/requirements.txt"
+fi
+
+# Everything else delegates to cli.py — same dispatch as `pipx install`.
+exec python3 "\$INSTALL_DIR/cli.py" "\$@"
 EOF
 chmod +x "$LAUNCHER"
 ok "Launcher installed at $LAUNCHER"
@@ -265,12 +244,12 @@ echo
 # exists but cannot be opened.
 launch_wizard() {
   if [ -t 0 ] && [ -t 1 ]; then
-    "$VENV/bin/python3" "$INSTALL_DIR/setup.py"
+    "$VENV/bin/python3" "$INSTALL_DIR/wizard.py"
     return $?
   fi
   if { exec 3</dev/tty; } 2>/dev/null; then
     exec 3<&-
-    "$VENV/bin/python3" "$INSTALL_DIR/setup.py" </dev/tty >/dev/tty 2>&1
+    "$VENV/bin/python3" "$INSTALL_DIR/wizard.py" </dev/tty >/dev/tty 2>&1
     return $?
   fi
   return 99  # no tty available

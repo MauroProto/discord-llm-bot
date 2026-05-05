@@ -26,13 +26,15 @@ A self-hosted Discord bot that talks via **Claude, GPT, Gemini, OpenRouter, Olla
 
 ## Quick start
 
-### One-line install (recommended)
+Two install paths — pick whichever fits your habits.
+
+### Option A — `curl | bash` (works anywhere, sets up voice deps too)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/MauroProto/discord-llm-bot/main/scripts/install.sh | bash
 ```
 
-That single command:
+What it does:
 
 1. Detects your OS (macOS / Debian / Arch / Fedora) and installs `ffmpeg`, `opus`, `libsodium` for voice.
 2. Clones the repo into `~/.discord-llm-bot/`.
@@ -40,16 +42,31 @@ That single command:
 4. Drops a `discord-llm-bot` launcher into `~/.local/bin`.
 5. Launches the **interactive setup wizard** — paste your Discord token + an LLM API key, pick a personality, choose voice on/off, done.
 
-When it's finished:
+### Option B — `pipx` (Python-native, no system clone)
+
+If you already have [pipx](https://pipx.pypa.io/) (`brew install pipx` or `python3 -m pip install --user pipx`):
+
+```bash
+pipx install git+https://github.com/MauroProto/discord-llm-bot.git
+discord-llm-bot setup
+```
+
+`pipx` keeps the bot in its own isolated venv (`~/.local/share/pipx/venvs/discord-llm-bot/`) and exposes `discord-llm-bot` on PATH. The setup wizard writes config to `~/.discord-llm-bot/` — same place the curl installer uses, so you can switch between methods without losing your `.env` or saved memory.
+
+> **Voice extras** (`ffmpeg`, `libopus`, `libsodium`): pipx can't install system packages. If you want voice, run `brew install ffmpeg opus libsodium` (macOS) or `sudo apt install ffmpeg libopus0 libsodium23` (Debian) first. Or just use Option A.
+
+### Subcommands (both install paths)
 
 ```bash
 discord-llm-bot              # start the bot
 discord-llm-bot setup        # re-run the wizard
 discord-llm-bot doctor       # read-only health check
 discord-llm-bot from-env     # build .env from current process env (Docker / CI)
-discord-llm-bot update       # pull latest + reinstall deps
+discord-llm-bot update       # (curl install only) pull latest + reinstall deps
 discord-llm-bot help         # all subcommands
 ```
+
+For pipx installs, update with `pipx upgrade discord-llm-bot`.
 
 ### Manual install (if you'd rather see every step)
 
@@ -85,7 +102,7 @@ brew install ffmpeg opus libsodium        # macOS
 # sudo apt install ffmpeg libopus0 libsodium23   # Debian / Ubuntu
 
 pip install --pre -r requirements.txt     # --pre is required (voice-recv ships only alphas)
-python3 setup.py                          # interactive wizard, writes .env for you
+python3 wizard.py                         # interactive wizard, writes .env for you
 python3 bot.py
 ```
 
@@ -97,7 +114,7 @@ docker compose up --build
 
 #### 5. Railway / Fly / VPS
 
-Connect this repo, the `Dockerfile` and `railway.json` are picked up automatically. Paste env vars into the platform's variables tab — `python3 setup.py` prints them for you when you pick "Railway / Fly / VPS" as the deploy target.
+Connect this repo, the `Dockerfile` and `railway.json` are picked up automatically. Paste env vars into the platform's variables tab — `python3 wizard.py` prints them for you when you pick "Railway / Fly / VPS" as the deploy target.
 
 </details>
 
@@ -328,7 +345,9 @@ For Railway, mount a persistent volume on `/app/data`. For local Docker, the inc
 | `config.py` | Pydantic settings loader |
 | `providers/` | LLM provider abstraction — Anthropic, OpenAI, Gemini, OpenRouter, Ollama, Codex CLI |
 | `mcp_config.py` | Parses `MCP_SERVERS_JSON` into Anthropic's `mcp_servers` + `mcp_toolset` payload |
-| `setup.py` | Interactive setup wizard (curses TUI + ANSI fallback) |
+| `cli.py` | `discord-llm-bot` CLI — dispatches setup/doctor/run/from-env |
+| `wizard.py` | Interactive setup wizard (curses TUI + ANSI fallback) |
+| `pyproject.toml` | Package metadata; enables `pipx install git+https://...` |
 | `scripts/install.sh` | One-line installer (clones, venv, deps, launcher, wizard) |
 | `personalities/` | Personality presets and loader |
 | `context_manager.py` | Reads channel history, persists daily `.md`, loads long-term memory |
