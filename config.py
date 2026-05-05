@@ -53,9 +53,10 @@ class Config(BaseSettings):
         default="anthropic",
         description=(
             "Which LLM provider to use. Supported: 'anthropic', 'openai', "
-            "'gemini', 'openrouter', 'ollama'. Use 'openrouter' for one key "
-            "across many cloud models, or 'ollama' to run open-weight models "
-            "locally for free."
+            "'gemini', 'openrouter', 'ollama', 'codex_cli'. Use 'openrouter' "
+            "for one key across many cloud models, 'ollama' for open-weight "
+            "models locally, or 'codex_cli' to use your ChatGPT Plus / Pro "
+            "subscription quota via the local `codex` CLI binary."
         ),
     )
 
@@ -216,6 +217,36 @@ class Config(BaseSettings):
             "Override OLLAMA_MODEL for voice replies. e.g. llama3.2:3b for "
             "lower latency on the voice path."
         ),
+    )
+
+    # Codex CLI (used when LLM_PROVIDER=codex_cli — uses your ChatGPT subscription)
+    CODEX_CLI_BIN: str | None = Field(
+        default=None,
+        description=(
+            "Path to the `codex` CLI binary. Defaults to whatever `which codex` "
+            "returns. Install with `npm install -g @openai/codex` and run "
+            "`codex login` (or `codex login --device-auth` on a headless box) "
+            "before starting the bot."
+        ),
+    )
+    CODEX_CLI_MODEL: str = Field(
+        default="gpt-5-codex",
+        description=(
+            "Model to request from the Codex CLI (passed via -m). Examples: "
+            "gpt-5-codex (default), o3, gpt-5.4. Subject to your subscription "
+            "tier's allowed models."
+        ),
+    )
+    CODEX_CLI_WORKDIR: str | None = Field(
+        default=None,
+        description=(
+            "Working directory the Codex CLI runs in. Defaults to the bot's "
+            "process cwd. Most chat use doesn't depend on this."
+        ),
+    )
+    VOICE_CODEX_CLI_MODEL: str | None = Field(
+        default=None,
+        description="Override CODEX_CLI_MODEL specifically for voice replies.",
     )
 
     # Claude / Anthropic

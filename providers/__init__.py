@@ -38,6 +38,10 @@ _ALIASES = {
     "or": "openrouter",
     "ollama": "ollama",
     "local": "ollama",
+    "codex": "codex_cli",
+    "codex_cli": "codex_cli",
+    "codex-cli": "codex_cli",
+    "chatgpt": "codex_cli",
 }
 
 
@@ -65,10 +69,13 @@ def get_provider(name: str | None = None) -> "LLMProvider":
     elif canonical == "ollama":
         from .ollama_provider import OllamaProvider
         provider = OllamaProvider()
+    elif canonical == "codex_cli":
+        from .codex_cli_provider import CodexCliProvider
+        provider = CodexCliProvider()
     else:
         raise ValueError(
             f"Unknown LLM provider {raw!r}. "
-            f"Supported: anthropic, openai, gemini, openrouter, ollama."
+            f"Supported: anthropic, openai, gemini, openrouter, ollama, codex_cli."
         )
 
     _provider_cache[canonical] = provider
