@@ -2,26 +2,33 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies (incluye ffmpeg/libopus/libsodium para voz)
+# System deps: ffmpeg/libopus/libsodium for Discord voice; gcc for any
+# C-extension wheels that might need to build from source on this slim base.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    git \
     ffmpeg \
     libopus0 \
     libsodium23 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy and install Python dependencies (--pre por discord-ext-voice-recv)
+# Python deps. --pre is required because discord-ext-voice-recv ships only
+# alphas. --no-cache-dir keeps the image small.
 COPY requirements.txt .
 RUN pip install --no-cache-dir --pre -r requirements.txt
 
-# Copy source code
-COPY *.py .
+# Source. Copy the root modules AND every Python package directory the bot
+# imports — providers/, personalities/, plus their __init__.py + assets.
+COPY *.py ./
+COPY providers/ ./providers/
+COPY personalities/ ./personalities/
 
-# Create data directory
+# Persistent data directory. Mount a volume here in production.
 ENV DATA_DIR=/app/data
 RUN mkdir -p /app/data
 
-# Healthcheck
+# Healthcheck — confirms the container can still execute Python. Real
+# liveness lives on the Discord side (heartbeats from gateway).
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "print('alive')" || exit 1
 
