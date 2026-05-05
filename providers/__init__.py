@@ -36,6 +36,8 @@ _ALIASES = {
     "gemini": "gemini",
     "openrouter": "openrouter",
     "or": "openrouter",
+    "ollama": "ollama",
+    "local": "ollama",
 }
 
 
@@ -60,10 +62,13 @@ def get_provider(name: str | None = None) -> "LLMProvider":
     elif canonical == "openrouter":
         from .openrouter_provider import OpenRouterProvider
         provider = OpenRouterProvider()
+    elif canonical == "ollama":
+        from .ollama_provider import OllamaProvider
+        provider = OllamaProvider()
     else:
         raise ValueError(
             f"Unknown LLM provider {raw!r}. "
-            f"Supported: anthropic, openai, gemini, openrouter."
+            f"Supported: anthropic, openai, gemini, openrouter, ollama."
         )
 
     _provider_cache[canonical] = provider

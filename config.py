@@ -30,8 +30,9 @@ class Config(BaseSettings):
         default="anthropic",
         description=(
             "Which LLM provider to use. Supported: 'anthropic', 'openai', "
-            "'gemini', 'openrouter'. Use 'openrouter' if you want a single "
-            "API key that works across Claude, GPT, Gemini, Llama, etc."
+            "'gemini', 'openrouter', 'ollama'. Use 'openrouter' for one key "
+            "across many cloud models, or 'ollama' to run open-weight models "
+            "locally for free."
         ),
     )
 
@@ -161,6 +162,36 @@ class Config(BaseSettings):
         description=(
             "Override OPENROUTER_MODEL specifically for voice replies. "
             "e.g. anthropic/claude-haiku-4-5 or openai/gpt-5.4-mini."
+        ),
+    )
+
+    # Ollama (used when LLM_PROVIDER=ollama — local self-hosted)
+    OLLAMA_BASE_URL: str | None = Field(
+        default=None,
+        description=(
+            "Ollama server URL. Defaults to http://localhost:11434/v1 if empty. "
+            "Set this when Ollama runs on another machine in your network."
+        ),
+    )
+    OLLAMA_API_KEY: str | None = Field(
+        default=None,
+        description=(
+            "Ollama doesn't authenticate by default. Only set this if you put "
+            "Ollama behind a reverse proxy that requires a bearer token."
+        ),
+    )
+    OLLAMA_MODEL: str = Field(
+        default="llama3.3",
+        description=(
+            "Ollama model id. Examples: llama3.3, qwen3:32b, deepseek-r1:14b, "
+            "mistral, llava (multimodal). Pull it first with `ollama pull <id>`."
+        ),
+    )
+    VOICE_OLLAMA_MODEL: str | None = Field(
+        default=None,
+        description=(
+            "Override OLLAMA_MODEL for voice replies. e.g. llama3.2:3b for "
+            "lower latency on the voice path."
         ),
     )
 
