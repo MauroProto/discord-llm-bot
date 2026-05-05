@@ -48,7 +48,7 @@ A self-hosted Discord bot that talks via **Claude, GPT, Gemini, or OpenRouter** 
 ### 3. Configure
 
 ```bash
-git clone https://github.com/MauroProto/discord-claude-bot.git discord-llm-bot
+git clone https://github.com/MauroProto/discord-llm-bot.git discord-llm-bot
 cd discord-llm-bot
 cp .env.example .env
 # Open .env and fill in DISCORD_BOT_TOKEN, ALLOWED_GUILD_ID,
