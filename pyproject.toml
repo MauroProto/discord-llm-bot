@@ -71,8 +71,9 @@ py-modules = [
     "search_client",
     "voice_manager",
 ]
-packages = ["providers", "personalities"]
+packages = ["providers", "personalities", "templates"]
 include-package-data = true
 
 [tool.setuptools.package-data]
 personalities = ["*.md"]
+templates = ["*.txt"]

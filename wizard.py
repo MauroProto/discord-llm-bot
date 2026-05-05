@@ -25,10 +25,41 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
+# `ROOT` is where wizard.py lives — used for shipped templates and assets
+# (.env.example, personalities/) that travel with the package.
 ROOT = Path(__file__).resolve().parent
-ENV_PATH = ROOT / ".env"
-ENV_EXAMPLE = ROOT / ".env.example"
 PERSONALITIES_DIR = ROOT / "personalities"
+
+# `.env` is user data and lives in cwd — cli.py chdirs to the data dir
+# (~/.discord-llm-bot/ or $DLBOT_HOME) before invoking the wizard, so this
+# resolves to the right place for both pipx and curl install paths.
+ENV_PATH = Path(".env")
+
+
+def _read_env_template() -> str:
+    """Find the bundled .env.example template.
+
+    Resolution order:
+      1. Sibling file `ROOT/.env.example` — works for git checkouts and
+         the curl|bash installer (where wizard.py sits next to the file).
+      2. Package data `templates/env_example.txt` — what pipx installs
+         carry, since top-level dotfiles aren't shipped by py-modules.
+      3. Empty string — wizard still works, output just has no comments.
+    """
+    sibling = ROOT / ".env.example"
+    if sibling.exists():
+        try:
+            return sibling.read_text()
+        except OSError:
+            pass
+    try:
+        from importlib import resources
+        return (resources.files("templates") / "env_example.txt").read_text()
+    except Exception:
+        return ""
+
+
+ENV_EXAMPLE_TEXT = _read_env_template()
 
 NO_COLOR = os.environ.get("NO_COLOR") or os.environ.get("TERM") == "dumb"
 IS_TTY = sys.stdin.isatty() and sys.stdout.isatty()
@@ -368,7 +399,7 @@ def write_env(values: dict[str, str]) -> Path:
         shutil.copy2(ENV_PATH, backup)
         info(f"Existing .env backed up to {backup.name}")
 
-    template = ENV_EXAMPLE.read_text() if ENV_EXAMPLE.exists() else ""
+    template = ENV_EXAMPLE_TEXT
     lines: list[str] = []
     written: set[str] = set()
 

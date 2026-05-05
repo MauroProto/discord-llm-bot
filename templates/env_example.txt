@@ -1,0 +1,257 @@
+# ============================================================================
+# discord-llm-bot — example environment configuration
+# Copy this file to .env and fill in your values.
+# ============================================================================
+
+# ───────────────────────────────────────────────────────────────
+# Discord
+# ───────────────────────────────────────────────────────────────
+
+# Bot token from https://discord.com/developers/applications
+DISCORD_BOT_TOKEN=your_discord_bot_token_here
+
+# Command prefix (default: !)
+BOT_PREFIX=!
+
+# Restrict the bot to one server. Right-click your server icon → Copy Server ID
+# (requires Developer Mode enabled in Discord settings). Leave commented to
+# allow any server the bot is invited to.
+# ALLOWED_GUILD_ID=123456789012345678
+
+# Restrict the bot to one text channel (optional). If unset, replies in any
+# channel of the allowed guild. Right-click the channel → Copy Channel ID.
+# ALLOWED_CHANNEL_ID=123456789012345678
+
+
+# ───────────────────────────────────────────────────────────────
+# Personality
+# ───────────────────────────────────────────────────────────────
+
+# Built-in personalities live in `personalities/` as .md files.
+# Options shipped: friendly, snarky, analyst.
+BOT_PERSONALITY=friendly
+
+# Substituted for {{BOT_NAME}} in the prompt. Leave empty to use the bot's
+# Discord username.
+# BOT_DISPLAY_NAME=
+
+# Override BOT_PERSONALITY entirely with a literal system prompt — useful when
+# the prompt is private and you don't want to commit it to your fork.
+# CUSTOM_SYSTEM_PROMPT=
+
+# Or load the prompt from a file (great for long prompts).
+# CUSTOM_SYSTEM_PROMPT_FILE=/path/to/your-personality.md
+
+# Optional CSV of historic prefixes the bot may have used in past messages
+# (e.g. when you renamed the bot). Used to strip its own prefix from
+# re-fed history. Example: "OldName:,OldName-bot:".
+# LEGACY_SELF_PREFIXES=
+
+
+# ───────────────────────────────────────────────────────────────
+# LLM provider — pick one
+# ───────────────────────────────────────────────────────────────
+
+# Supported: anthropic | openai | gemini | openrouter | ollama | codex_cli
+LLM_PROVIDER=anthropic
+
+
+# ─── Anthropic Claude (LLM_PROVIDER=anthropic) ─────────────────
+
+# API key from https://console.anthropic.com/
+# Required only when LLM_PROVIDER=anthropic.
+# ANTHROPIC_API_KEY=sk-ant-api03-...
+
+# Model. Common picks:
+#   claude-opus-4-7    — flagship, supports 1M context, best quality
+#   claude-sonnet-4-6  — balanced quality / speed / cost
+#   claude-haiku-4-5   — fast and cheap
+ANTHROPIC_MODEL=claude-opus-4-7
+
+# 1M-token context beta (Opus and Sonnet 4.x). Set to false for Haiku.
+ENABLE_1M_CONTEXT=true
+
+# Adaptive extended thinking. Effort: low | medium | high | xhigh | max
+EXTENDED_THINKING=true
+THINKING_EFFORT=max
+
+# Override Claude model specifically for voice (faster / cheaper).
+# VOICE_CLAUDE_MODEL=claude-haiku-4-5
+
+
+# ─── OpenAI (LLM_PROVIDER=openai) ──────────────────────────────
+
+# OPENAI_API_KEY=sk-...
+# OPENAI_MODEL=gpt-5.4
+# Long-context: gpt-4.1 (1M tokens). Reasoning: o3, o4-mini.
+# Override OpenAI base URL for OpenAI-compatible endpoints (uncommon).
+# OPENAI_BASE_URL=
+# VOICE_OPENAI_MODEL=gpt-5.4-mini
+
+
+# ─── Google Gemini (LLM_PROVIDER=gemini) ───────────────────────
+
+# GOOGLE_API_KEY=...                # or GEMINI_API_KEY
+# GEMINI_MODEL=gemini-2.5-pro       # or gemini-2.5-flash, gemini-3.1-pro-preview
+# VOICE_GEMINI_MODEL=gemini-2.5-flash
+
+
+# ─── OpenRouter (LLM_PROVIDER=openrouter) ──────────────────────
+
+# One API key for 100+ models. Pricing is passthrough.
+# OPENROUTER_API_KEY=sk-or-...
+# OPENROUTER_MODEL=anthropic/claude-haiku-4-5
+# Append :online to enable web search (e.g. anthropic/claude-opus-4-7:online)
+# OPENROUTER_REFERER=https://yourdomain.example
+# OPENROUTER_APP_NAME=My Discord Bot
+# VOICE_OPENROUTER_MODEL=anthropic/claude-haiku-4-5
+
+
+# ───────────────────────────────────────────────────────────────
+# Output limits
+# ───────────────────────────────────────────────────────────────
+
+# Max tokens per response (output + reasoning).
+MAX_TOKENS=32000
+
+
+# ───────────────────────────────────────────────────────────────
+# Context / Storage
+# ───────────────────────────────────────────────────────────────
+
+# Where to store the daily .md context files (mount as a volume in production).
+DATA_DIR=./data
+
+# Number of Discord messages to fetch as recent history.
+HISTORY_LIMIT=100
+
+# Long-term memory: how many days of saved .md context to inject as background.
+MEMORY_DAYS=14
+MEMORY_MAX_CHARS=400000
+
+
+# ───────────────────────────────────────────────────────────────
+# Web search (Anthropic native; provider-specific elsewhere)
+# ───────────────────────────────────────────────────────────────
+
+ENABLE_WEB_SEARCH=true
+WEB_SEARCH_MAX_USES=5
+ENABLE_WEB_FETCH=true
+WEB_FETCH_MAX_USES=5
+
+# ─── Fallback search (used when the provider doesn't have native search) ──
+
+# Tavily (https://tavily.com — 1000 calls/month free)
+# TAVILY_API_KEY=
+# SerpAPI (https://serpapi.com — 100 calls/month free)
+# SERPAPI_KEY=
+
+
+# ───────────────────────────────────────────────────────────────
+# Spontaneous responses (off by default)
+# ───────────────────────────────────────────────────────────────
+
+# If true, the bot may reply without being mentioned when it detects
+# certain keywords in the message.
+SPONTANEOUS_RESPONSE=false
+SPONTANEOUS_PROBABILITY=0.3
+
+
+# ============================================================================
+# VOICE — ElevenLabs TTS + STT
+# ============================================================================
+
+# Master switch. Set to true to enable !join / !leave and voice features.
+VOICE_ENABLED=false
+
+# (Optional) Default voice channel ID. If set, !join always connects here
+# regardless of where the user is. If empty, !join joins the user's current VC.
+# VOICE_CHANNEL_ID=
+
+# API key from https://elevenlabs.io/app/settings/api-keys
+# Required only when VOICE_ENABLED=true.
+# ELEVENLABS_API_KEY=sk_...
+
+# Voice ID — pick one from https://elevenlabs.io/app/voice-library
+# (the ID looks like "EXAVITQu4vr4xnSDxMaL"). Falls back to a default if unset.
+# ELEVENLABS_VOICE_ID=EXAVITQu4vr4xnSDxMaL
+
+# TTS model:
+#   eleven_v3              — most expressive, supports inline audio tags, slower
+#   eleven_turbo_v2_5      — recommended: ~300ms latency, multilingual, natural
+#   eleven_flash_v2_5      — ultra low latency ~75ms, slightly lower quality
+#   eleven_multilingual_v2 — high quality, ~1-2s latency
+ELEVENLABS_TTS_MODEL=eleven_turbo_v2_5
+
+# STT model (Scribe v1)
+ELEVENLABS_STT_MODEL=scribe_v1
+
+# STT language (ISO-639-3): spa=Spanish, eng=English, por=Portuguese, etc.
+VOICE_LANGUAGE=eng
+
+
+# ───────────────────────────────────────────────────────────────
+# Voice — behavior
+# ───────────────────────────────────────────────────────────────
+
+# Reply to anything spoken in the VC (no wake word required).
+VOICE_ALWAYS_RESPOND=true
+
+# Wake words (CSV). Only used if VOICE_ALWAYS_RESPOND=false.
+VOICE_WAKE_WORDS=bot
+
+# Drop transcripts shorter than this (filters "uh", "ah" noise).
+VOICE_MIN_TURN_CHARS=3
+
+# Min ms between two consecutive bot replies.
+VOICE_COOLDOWN_MS=1500
+
+# Silence (ms) that closes a turn and triggers STT.
+VOICE_SILENCE_MS=1000
+
+# Force-flush a turn after this many seconds (caps very long monologues).
+VOICE_MAX_TURN_SECONDS=15
+
+# Truncate TTS responses longer than this (chars).
+VOICE_MAX_RESPONSE_CHARS=600
+
+# Recent voice turns to inject as immediate context to the LLM.
+VOICE_RECENT_TURNS=30
+
+# Mirror text-channel responses to TTS while connected to VC.
+VOICE_MIRROR_TEXT=false
+
+# Auto-leave the VC after this many seconds with no audio. 0 = never.
+VOICE_IDLE_TIMEOUT_SECONDS=120
+VOICE_IDLE_CHECK_SECONDS=15
+
+
+# ───────────────────────────────────────────────────────────────
+# Voice — LLM tuning (independent from chat)
+# ───────────────────────────────────────────────────────────────
+
+# Reasoning in voice mode. Off by default for minimum latency. (Chat mode keeps
+# whatever EXTENDED_THINKING / THINKING_EFFORT you set above.)
+VOICE_EXTENDED_THINKING=false
+VOICE_THINKING_EFFORT=low
+
+# Long-term memory budget in voice mode:
+#   -1 → use MEMORY_MAX_CHARS (full memory; leverages prompt caching)
+#    0 → no long-term memory in voice (fastest, less context)
+#   >0 → custom char budget
+VOICE_MEMORY_MAX_CHARS=-1
+
+
+# ───────────────────────────────────────────────────────────────
+# ElevenLabs voice_settings (how the voice sounds)
+# ───────────────────────────────────────────────────────────────
+
+# Speed: 1.0 normal, <1 slower, >1 faster. 0.88–0.95 sounds natural.
+VOICE_SPEED=0.92
+# Stability: higher = more consistent; lower = more expressive.
+VOICE_STABILITY=0.5
+# Similarity boost: how closely the output follows the original voice timbre.
+VOICE_SIMILARITY_BOOST=0.8
+# Style exaggeration: a touch of style avoids robotic delivery.
+VOICE_STYLE=0.15
+VOICE_USE_SPEAKER_BOOST=true
