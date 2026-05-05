@@ -29,8 +29,8 @@ class Config(BaseSettings):
     LLM_PROVIDER: str = Field(
         default="anthropic",
         description=(
-            "Which LLM provider to use. Currently supported: 'anthropic', "
-            "'openai'. More providers (gemini, openrouter) coming in upcoming PRs."
+            "Which LLM provider to use. Supported: 'anthropic', 'openai', "
+            "'gemini'. OpenRouter coming next."
         ),
     )
 
@@ -59,6 +59,34 @@ class Config(BaseSettings):
         description=(
             "Override OPENAI_MODEL specifically for voice replies (faster / "
             "cheaper). e.g. gpt-5.4-mini. Only honored when LLM_PROVIDER=openai."
+        ),
+    )
+
+    # Google Gemini (used when LLM_PROVIDER=gemini)
+    GOOGLE_API_KEY: str | None = Field(
+        default=None,
+        description=(
+            "Google AI Studio API key (https://aistudio.google.com/apikey). "
+            "Used by the Gemini provider. `GEMINI_API_KEY` is accepted as an alias."
+        ),
+    )
+    GEMINI_API_KEY: str | None = Field(
+        default=None,
+        description="Alias for GOOGLE_API_KEY for users who prefer that name.",
+    )
+    GEMINI_MODEL: str = Field(
+        default="gemini-2.5-pro",
+        description=(
+            "Gemini model id. Examples: gemini-2.5-pro (smart), "
+            "gemini-2.5-flash (fast/cheap, 1M context), gemini-2.5-flash-lite "
+            "(fastest), gemini-3.1-pro-preview (latest flagship)."
+        ),
+    )
+    VOICE_GEMINI_MODEL: str | None = Field(
+        default=None,
+        description=(
+            "Override GEMINI_MODEL specifically for voice replies. "
+            "e.g. gemini-2.5-flash. Only honored when LLM_PROVIDER=gemini."
         ),
     )
 
