@@ -43,9 +43,12 @@ That single command:
 When it's finished:
 
 ```bash
-discord-llm-bot          # start the bot
-discord-llm-bot setup    # re-run the wizard
-discord-llm-bot update   # pull latest + reinstall deps
+discord-llm-bot              # start the bot
+discord-llm-bot setup        # re-run the wizard
+discord-llm-bot doctor       # read-only health check
+discord-llm-bot from-env     # build .env from current process env (Docker / CI)
+discord-llm-bot update       # pull latest + reinstall deps
+discord-llm-bot help         # all subcommands
 ```
 
 ### Manual install (if you'd rather see every step)
