@@ -135,9 +135,23 @@
             <span class="text-ink-400">Remembers both.</span>
           </h1>
 
-          <p class="text-base lg:text-lg text-ink-400 leading-relaxed max-w-md mb-8">
-            A self-hosted Discord bot. Pick your LLM (Claude, GPT, Gemini, OpenRouter), pick a personality, and optionally bring it to your voice channels. One shared memory across text and voice.
+          <p class="text-base lg:text-lg text-ink-400 leading-relaxed max-w-md mb-6">
+            A self-hosted Discord bot. Pick your LLM (Claude, GPT, Gemini, OpenRouter, Ollama, ChatGPT subscription), pick a personality, optionally bring it to your voice channels. One shared memory across text and voice.
           </p>
+
+          <!-- copy-able one-liner -->
+          <div class="mb-4 group relative">
+            <div class="text-[11px] font-mono text-ink-600 mb-1.5 uppercase tracking-wider">install in one line</div>
+            <button
+              id="install-cmd"
+              type="button"
+              onclick="navigator.clipboard.writeText('curl -fsSL https://raw.githubusercontent.com/MauroProto/discord-llm-bot/main/scripts/install.sh | bash').then(()=>{const t=document.getElementById('copy-tip');t.textContent='copied ✓';setTimeout(()=>t.textContent='click to copy',1600);})"
+              class="w-full text-left bg-ink-900 border border-ink-800 rounded-lg px-4 py-3 font-mono text-[12px] lg:text-[13px] text-ink-200 hover:border-ink-600 transition cursor-pointer overflow-x-auto"
+            >
+              <span class="text-ink-500 select-none">$ </span>curl -fsSL https://raw.githubusercontent.com/MauroProto/discord-llm-bot/main/scripts/install.sh | bash
+            </button>
+            <div id="copy-tip" class="text-[10px] font-mono text-ink-600 mt-1.5">click to copy</div>
+          </div>
 
           <div class="flex flex-wrap items-center gap-3 mb-10">
             <a href="https://github.com/MauroProto/discord-llm-bot" target="_blank" rel="noopener" class="group inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-ink-100 text-ink-950 font-medium text-sm hover:bg-ink-300 transition">
@@ -152,7 +166,7 @@
           <div class="grid grid-cols-3 gap-4 max-w-md">
             <div>
               <div class="text-xs font-mono text-ink-600 mb-1">01</div>
-              <div class="text-sm text-ink-300 leading-snug">4 providers,<br/>3 personalities</div>
+              <div class="text-sm text-ink-300 leading-snug">6 providers,<br/>3 personalities</div>
             </div>
             <div>
               <div class="text-xs font-mono text-ink-600 mb-1">02</div>
