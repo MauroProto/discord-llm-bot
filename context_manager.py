@@ -155,7 +155,7 @@ class ContextManager:
             if not text.strip():
                 continue
             if len(text) > remaining:
-                text = "[...inicio del dia truncado para ahorrar contexto...]\n\n" + text[-remaining:]
+                text = "[...beginning of day truncated to save context...]\n\n" + text[-remaining:]
             chunks.append((label, text))
             total += len(text)
 

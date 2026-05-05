@@ -135,11 +135,12 @@ class AnthropicProvider(LLMProvider):
             return self.system_prompt
 
         memory_block = (
-            "# Memoria interna del grupo (conversaciones guardadas automáticamente)\n\n"
-            "Lo siguiente es un registro de lo que ya hablaron en este grupo en días anteriores. "
-            "Usalo como contexto de fondo: si te preguntan algo que se discutió antes, ya lo sabés. "
-            "No menciones que tenés un sistema de memoria ni te refieras a este texto explícitamente; "
-            "simplemente actuá como una integrante del grupo que se acuerda de lo que pasó.\n\n"
+            "# Long-term memory (saved conversations from previous days)\n\n"
+            "What follows is a record of what's already been discussed in this server "
+            "on earlier days. Use it as background context: if someone references "
+            "something that came up before, you already know about it. Do not mention "
+            "that you have a memory system or refer to this text explicitly — just "
+            "behave like a member of the group who remembers what happened.\n\n"
             + memory_text
         )
 
@@ -193,9 +194,9 @@ class AnthropicProvider(LLMProvider):
                         yield text
 
         except anthropic.APIError as e:
-            yield f"Che, la API de Claude se quejó. Reintentame. ({_clean_err(e)})"
+            yield f"The Claude API just complained. Try again. ({_clean_err(e)})"
         except Exception as e:
-            yield f"Ups, algo se rompió. Reintentame en un toque. ({_clean_err(e)})"
+            yield f"Something broke. Try again in a sec. ({_clean_err(e)})"
 
     # ------- Chat generation -------
 
@@ -240,9 +241,9 @@ class AnthropicProvider(LLMProvider):
             return "\n".join(parts).strip()
 
         except anthropic.APIError as e:
-            return f"Che, la API de Claude se quejó. Reintentame. ({_clean_err(e)})"
+            return f"The Claude API just complained. Try again. ({_clean_err(e)})"
         except Exception as e:
-            return f"Ups, algo se rompió. Reintentame en un toque. ({_clean_err(e)})"
+            return f"Something broke. Try again in a sec. ({_clean_err(e)})"
 
     # ------- Voice generation -------
 

@@ -674,11 +674,11 @@ _LEAVE_NL_RE = re.compile(
 
 def _voice_disabled_msg() -> str:
     if not settings.VOICE_ENABLED:
-        return "La voz está desactivada (VOICE_ENABLED=false en .env)."
+        return "Voice mode is disabled (VOICE_ENABLED=false in .env)."
     if not settings.ELEVENLABS_API_KEY:
         return "ELEVENLABS_API_KEY is missing in .env — voice cannot start."
     if not VOICE_RECV_AVAILABLE:
-        return "Falta el paquete `discord-ext-voice-recv`. Reinstalá las dependencias."
+        return "Missing package `discord-ext-voice-recv`. Reinstall dependencies."
     return ""
 
 
@@ -693,7 +693,7 @@ async def _do_join(ctx: commands.Context) -> None:
 
     vc: discord.VoiceChannel | None = None
 
-    # 1) Si VOICE_CHANNEL_ID está configurado, usar ese canal fijo
+    # 1) If VOICE_CHANNEL_ID is set, always use that fixed channel
     if settings.VOICE_CHANNEL_ID:
         ch = ctx.guild.get_channel(settings.VOICE_CHANNEL_ID)
         if ch is None:

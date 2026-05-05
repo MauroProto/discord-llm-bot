@@ -376,27 +376,27 @@ class Config(BaseSettings):
     VOICE_CHANNEL_ID: int | None = Field(
         default=None,
         description=(
-            "ID del canal de voz por defecto. Si está seteado, !join se conecta "
-            "siempre a este canal (no importa dónde estés vos). Si es None, "
-            "!join usa el canal de voz en el que estés conectado."
+            "Default voice channel ID. If set, !join always connects here "
+            "regardless of where you are. If None, !join uses whichever "
+            "voice channel you're currently in."
         )
     )
     ELEVENLABS_API_KEY: str | None = Field(
         default=None,
-        description="API key de ElevenLabs (requerida si VOICE_ENABLED=true)"
+        description="ElevenLabs API key (required if VOICE_ENABLED=true)"
     )
     ELEVENLABS_VOICE_ID: str = Field(
         default="AwmgI32PB22lsT7wnBFH",
-        description="Voice ID de ElevenLabs (configurable en .env)"
+        description="ElevenLabs voice ID (configurable via .env)"
     )
     ELEVENLABS_TTS_MODEL: str = Field(
         default="eleven_v3",
         description=(
-            "Modelo TTS de ElevenLabs. Opciones: "
-            "eleven_v3 (el más expresivo, recomendado por el usuario), "
-            "eleven_turbo_v2_5 (balance calidad/latencia ~300ms, multilingüe), "
-            "eleven_flash_v2_5 (ultra baja latencia ~75ms, calidad menor), "
-            "eleven_multilingual_v2 (alta calidad, latencia ~1-2s)"
+            "ElevenLabs TTS model. Options: "
+            "eleven_v3 (most expressive, recommended), "
+            "eleven_turbo_v2_5 (quality/latency balance ~300ms, multilingual), "
+            "eleven_flash_v2_5 (ultra-low latency ~75ms, lower quality), "
+            "eleven_multilingual_v2 (high quality, ~1-2s latency)"
         )
     )
     ELEVENLABS_STT_MODEL: str = Field(
@@ -405,19 +405,19 @@ class Config(BaseSettings):
     )
     VOICE_LANGUAGE: str = Field(
         default="spa",
-        description="Código ISO-639-3 del idioma para STT"
+        description="ISO-639-3 language code for STT"
     )
     VOICE_ALWAYS_RESPOND: bool = Field(
         default=True,
-        description="Si true, contesta a todo lo que oye en VC sin esperar wake word"
+        description="If true, reply to everything heard in VC without waiting for a wake word"
     )
     VOICE_WAKE_WORDS: str = Field(
         default="bot",
-        description="CSV de wake words (solo se usan si VOICE_ALWAYS_RESPOND=false)"
+        description="CSV of wake words (only used if VOICE_ALWAYS_RESPOND=false)"
     )
     VOICE_MIN_TURN_CHARS: int = Field(
         default=3,
-        description="Ignora transcripts más cortos que esto (filtra ruido tipo 'eh', 'ah')"
+        description="Ignore transcripts shorter than this (filters noise like 'uh', 'eh')"
     )
     VOICE_COOLDOWN_MS: int = Field(
         default=1500,
@@ -425,15 +425,15 @@ class Config(BaseSettings):
     )
     VOICE_SILENCE_MS: int = Field(
         default=800,
-        description="Silencio que cierra un turno de habla"
+        description="Silence that closes a speaking turn"
     )
     VOICE_MAX_TURN_SECONDS: int = Field(
         default=30,
-        description="Máximo de segundos de un turno antes de forzar flush"
+        description="Max seconds of a turn before forcing a flush"
     )
     VOICE_MIRROR_TEXT: bool = Field(
         default=False,
-        description="Si está en VC, leer también respuestas del canal de texto"
+        description="If in a VC, also read out replies from the text channel"
     )
     VOICE_IDLE_TIMEOUT_SECONDS: int = Field(
         default=120,
@@ -441,60 +441,60 @@ class Config(BaseSettings):
     )
     VOICE_IDLE_CHECK_SECONDS: int = Field(
         default=15,
-        description="Cada cuántos segundos chequear el timeout de inactividad."
+        description="How often (seconds) to check the idle timeout."
     )
     VOICE_MAX_RESPONSE_CHARS: int = Field(
         default=600,
-        description="Truncar respuestas TTS más largas que esto"
+        description="Truncate TTS responses longer than this"
     )
     VOICE_RECENT_TURNS: int = Field(
         default=30,
-        description="Número de turnos de voz recientes a inyectar como contexto inmediato"
+        description="Number of recent voice turns to inject as immediate context"
     )
 
-    # Razonamiento de Claude en modo voz (independiente del chat)
+    # Reasoning in voice mode (configured independently from chat mode)
     VOICE_EXTENDED_THINKING: bool = Field(
         default=False,
         description=(
-            "Si false, Claude NO razona en modo voz (mínima latencia). "
-            "Si true, usa VOICE_THINKING_EFFORT. El chat normal sigue con EXTENDED_THINKING/THINKING_EFFORT."
+            "If false, the LLM does NOT reason in voice mode (minimum latency). "
+            "If true, uses VOICE_THINKING_EFFORT. Chat mode is unaffected — it keeps EXTENDED_THINKING/THINKING_EFFORT."
         )
     )
     VOICE_THINKING_EFFORT: str = Field(
         default="low",
-        description="Esfuerzo de razonamiento solo para voz: low | medium | high | xhigh | max"
+        description="Reasoning effort for voice only: low | medium | high | xhigh | max"
     )
-    # Modelo Claude solo para voz (independiente del chat). Haiku es ~3-5x más rápido que Opus.
+    # Voice-only Claude model (independent from chat). Haiku is ~3-5x faster than Opus.
     VOICE_CLAUDE_MODEL: str = Field(
         default="claude-haiku-4-5",
-        description="Modelo Claude solo para voz. Haiku=más rápido. Vacío=usa ANTHROPIC_MODEL"
+        description="Claude model for voice only. Haiku = faster. Empty = use ANTHROPIC_MODEL."
     )
-    # Cuánta memoria a largo plazo cargar en voz (en chars). 0 = ninguna (mucho más rápido).
+    # How much long-term memory to load in voice mode (in chars). 0 = none (much faster).
     VOICE_MEMORY_MAX_CHARS: int = Field(
         default=0,
-        description="Caracteres de memoria .md a inyectar en voz. 0=ninguno (rápido), -1=usa MEMORY_MAX_CHARS"
+        description="Chars of saved-memory .md to inject in voice. 0 = none (fast), -1 = use MEMORY_MAX_CHARS"
     )
 
-    # ElevenLabs voice_settings (afectan cómo suena la voz)
+    # ElevenLabs voice_settings (affect how the voice sounds)
     VOICE_SPEED: float = Field(
         default=0.92,
-        description="Velocidad de habla. 1.0 = normal, <1 = más pausada, >1 = más rápida. Recomendado 0.88-0.95 para charla natural."
+        description="Speaking rate. 1.0 = normal, <1 = slower, >1 = faster. 0.88–0.95 sounds natural in conversation."
     )
     VOICE_STABILITY: float = Field(
         default=0.5,
-        description="0-1. Mayor = voz más consistente y predecible; menor = más expresiva pero variable."
+        description="0-1. Higher = more consistent and predictable; lower = more expressive but variable."
     )
     VOICE_SIMILARITY_BOOST: float = Field(
         default=0.8,
-        description="0-1. Cuán fielmente la salida sigue el timbre de la voz original."
+        description="0-1. How closely the output matches the source voice's timbre."
     )
     VOICE_STYLE: float = Field(
         default=0.15,
-        description="0-1. Exageración estilística; un poco de style ayuda a que suene más natural y menos robot."
+        description="0-1. Stylistic exaggeration; a touch of style helps it sound natural rather than robotic."
     )
     VOICE_USE_SPEAKER_BOOST: bool = Field(
         default=True,
-        description="Amplifica la similitud con el hablante original."
+        description="Amplify similarity to the original speaker."
     )
 
 

@@ -289,7 +289,7 @@ def _coalesce_messages(msgs: list[dict]) -> list[dict]:
 
 
 def _has_voice_signal(pcm: bytes, threshold_rms: int = 200) -> bool:
-    """Heurística simple: rechaza buffers que son básicamente silencio."""
+    """Simple heuristic: reject buffers that are basically silence."""
     if not pcm:
         return False
     try:
@@ -300,7 +300,7 @@ def _has_voice_signal(pcm: bytes, threshold_rms: int = 200) -> bool:
 
 
 def _build_sink_class():
-    """Construye dinámicamente la clase sink heredando de voice_recv.AudioSink."""
+    """Dynamically build the sink class inheriting from voice_recv.AudioSink."""
     if not VOICE_RECV_AVAILABLE:
         return None
 
@@ -358,18 +358,18 @@ class VoiceSession:
         self._buffer_started_at: dict[int, float] = {}
         self._silence_tasks: dict[int, asyncio.Task] = {}
 
-        # Últimos turnos de voz (para inyectar como contexto inmediato a Claude)
+        # Recent voice turns (injected as immediate context for the LLM)
         self.recent_transcripts: deque[dict] = deque(maxlen=settings.VOICE_RECENT_TURNS)
 
-        # Sincronización
+        # Synchronization
         self._respond_lock = asyncio.Lock()
         self._last_response_at: float = 0.0
         self._closed = False
-        # Cancel-on-new-input: solo procesa la respuesta más reciente
+        # Cancel-on-new-input: only process the most recent reply
         self._current_response_task: asyncio.Task | None = None
         self._current_stt_task: asyncio.Task | None = None
         # Anti-echo: when the bot speaks, its voice bounces back through the user mics
-        # → ignorar audio entrante mientras habla + ECHO_GUARD_MS después
+        # → ignore incoming audio while speaking + ECHO_GUARD_MS afterwards
         self._is_speaking: bool = False
         self._speak_finished_at: float = 0.0
 
@@ -410,8 +410,8 @@ class VoiceSession:
         if not buf:
             self._buffer_started_at[user_id] = time.monotonic()
             print(f"[VOICE] turn start: {author}")
-            # Cancelar Claude/TTS PENDIENTE (en proceso de generar) si todavía
-            # no empezó a sonar. Si ya sonando, NO interrumpir (lo termina).
+            # Cancel any PENDING LLM/TTS task (still generating) if playback
+            # hasn't started yet. If already playing, do NOT interrupt — let it finish.
             if self._current_response_task and not self._current_response_task.done():
                 if not self._is_speaking:
                     self._current_response_task.cancel()
@@ -426,7 +426,7 @@ class VoiceSession:
             self._silence_timer(user_id)
         )
 
-        # Force-flush si el turno se hizo demasiado largo
+        # Force-flush if the turn has gone on too long
         started = self._buffer_started_at.get(user_id, 0)
         if time.monotonic() - started >= settings.VOICE_MAX_TURN_SECONDS:
             print(f"[VOICE] long turn from {author} → forced flush")
@@ -437,10 +437,10 @@ class VoiceSession:
             await asyncio.sleep(settings.VOICE_SILENCE_MS / 1000)
         except asyncio.CancelledError:
             return
-        # Importante: lanzamos _flush_user como TASK INDEPENDIENTE.
-        # Si lo hiciéramos `await self._flush_user(user_id)` directo, el cancel
-        # del próximo turno (que cancela este _silence_timer) MATARÍA también
-        # el STT en curso. Por eso lo despachamos como task separada.
+        # Important: dispatch _flush_user as an INDEPENDENT TASK.
+        # If we awaited `self._flush_user(user_id)` directly, the cancel
+        # from the next turn (which cancels this _silence_timer) would
+        # ALSO kill the in-flight STT request. Spawning it decouples them.
         asyncio.create_task(self._flush_user(user_id))
 
     async def _flush_user(self, user_id: int) -> None:
@@ -528,7 +528,7 @@ class VoiceSession:
         except Exception as e:
             print(f"[VOICE] could not save transcript: {e}")
 
-        # 3) ¿Respondemos?
+        # 3) Should we respond at all?
         if not self._should_respond(text):
             return
 
@@ -686,7 +686,7 @@ class VoiceSession:
         except Exception as e:
             print(f"[VOICE] could not load text-channel history: {e}")
 
-        # 2) Turnos recientes de voz (los más nuevos al final)
+        # 2) Recent voice turns (newest last)
         for t in self.recent_transcripts:
             content = t["text"]
             if t.get("is_bot"):
@@ -697,18 +697,18 @@ class VoiceSession:
                     "content": f"[VOICE] {t['author']}: {content}",
                 })
 
-        # Limpieza: Claude requiere alternancia user/assistant. Colapsamos consecutivos.
+        # Cleanup: Anthropic requires alternating user/assistant. Collapse consecutives.
         msgs = _coalesce_messages(msgs)
 
-        # Asegurar que el último sea user (sino Claude no responde)
+        # Ensure the last message is from `user` (otherwise the model won't reply).
         if not msgs or msgs[-1]["role"] != "user":
-            msgs.append({"role": "user", "content": "(continúa la conversación)"})
+            msgs.append({"role": "user", "content": "(continue the conversation)"})
         return msgs
 
     # --- TTS / playback ---
 
     async def speak(self, text: str) -> None:
-        """Genera TTS y lo reproduce en el VC. Bloquea hasta terminar."""
+        """Generate TTS and play it in the VC. Blocks until done."""
         if not self.voice_client or not self.voice_client.is_connected():
             return
 
@@ -829,11 +829,11 @@ class VoiceManager:
     ) -> VoiceSession:
         if not VOICE_RECV_AVAILABLE:
             raise RuntimeError(
-                "discord-ext-voice-recv no instalado. Agregá `discord-ext-voice-recv` "
-                "a requirements.txt y reinstalá."
+                "discord-ext-voice-recv is not installed. Add `discord-ext-voice-recv` "
+                "to requirements.txt and reinstall."
             )
         if not settings.ELEVENLABS_API_KEY:
-            raise RuntimeError("Falta ELEVENLABS_API_KEY en .env")
+            raise RuntimeError("ELEVENLABS_API_KEY is missing in .env")
 
         guild_id = voice_channel.guild.id
         existing = self._sessions.get(guild_id)
