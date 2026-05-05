@@ -37,6 +37,7 @@ class AnthropicProvider(LLMProvider):
 
     CONTEXT_1M_BETA = "context-1m-2025-08-07"
     WEB_FETCH_BETA = "web-fetch-2025-09-10"
+    MCP_CLIENT_BETA = "mcp-client-2025-11-20"
     WEB_SEARCH_TOOL_TYPE = "web_search_20250305"
     WEB_FETCH_TOOL_TYPE = "web_fetch_20250910"
 
@@ -82,6 +83,26 @@ class AnthropicProvider(LLMProvider):
                 "name": "web_fetch",
                 "max_uses": settings.WEB_FETCH_MAX_USES,
             })
+
+        # MCP servers (Anthropic's native server-side connector). When
+        # configured, we add the matching mcp_toolset entries to `tools`
+        # and the server defs to `mcp_servers` (set on each request) plus
+        # the MCP beta header. Other providers ignore MCP for now.
+        from mcp_config import load_servers, to_anthropic_payload
+        self._mcp_servers: list[dict] = []
+        try:
+            mcp_list = load_servers()
+            if mcp_list:
+                self._mcp_servers, mcp_toolsets = to_anthropic_payload(mcp_list)
+                tools.extend(mcp_toolsets)
+                if self.MCP_CLIENT_BETA not in betas:
+                    betas.append(self.MCP_CLIENT_BETA)
+                    self.extra_headers = {"anthropic-beta": ",".join(betas)}
+                print(f"[mcp] anthropic provider connected to {len(mcp_list)} MCP server(s): "
+                      f"{', '.join(s['name'] for s in self._mcp_servers)}")
+        except Exception as e:
+            print(f"[mcp] failed to configure MCP servers (continuing without): {e}")
+
         self.tools: list[dict] | None = tools or None
 
     # ------- Capabilities -------
@@ -158,6 +179,8 @@ class AnthropicProvider(LLMProvider):
                 create_kwargs["output_config"] = self.output_config
             if self.tools:
                 create_kwargs["tools"] = self.tools
+            if self._mcp_servers:
+                create_kwargs["mcp_servers"] = self._mcp_servers
 
             async with self.client.messages.stream(**create_kwargs) as stream:
                 async for text in stream.text_stream:
@@ -194,6 +217,8 @@ class AnthropicProvider(LLMProvider):
                 create_kwargs["output_config"] = self.output_config
             if self.tools:
                 create_kwargs["tools"] = self.tools
+            if self._mcp_servers:
+                create_kwargs["mcp_servers"] = self._mcp_servers
 
             # Always stream — Anthropic requires it for long-running ops
             # (>10 min) such as extended thinking with high budgets or 1M

@@ -60,6 +60,28 @@ class Config(BaseSettings):
         ),
     )
 
+    # MCP (Model Context Protocol) — remote tool servers
+    MCP_SERVERS_JSON: str | None = Field(
+        default=None,
+        description=(
+            "JSON array of MCP servers to expose as tools. Each entry is "
+            "{name, url, authorization_token?}. Anthropic's Messages API "
+            "executes them server-side (beta `mcp-client-2025-11-20`); "
+            "other providers will warn and ignore. Example: "
+            "'[{\"name\":\"github\",\"url\":\"https://mcp.github.com/sse\","
+            "\"authorization_token\":\"ghp_...\"}]'"
+        ),
+    )
+    MCP_TOOL_FILTERS_JSON: str | None = Field(
+        default=None,
+        description=(
+            "Optional JSON map of per-server tool allow/deny lists, e.g. "
+            "'{\"github\":{\"deny\":[\"delete_repo\"]}}'. Allowlist mode "
+            "(`allow`) disables everything else; denylist (`deny`) keeps "
+            "everything else enabled."
+        ),
+    )
+
     # Personality / display name
     BOT_PERSONALITY: str = Field(
         default="friendly",

@@ -21,6 +21,21 @@ if TYPE_CHECKING:
     from personalities import Personality
 
 
+def warn_if_mcp_configured(provider_name: str) -> None:
+    """Log a one-time warning if MCP servers are configured on a provider
+    that doesn't support them natively (everyone except Anthropic for now).
+    """
+    if not settings.MCP_SERVERS_JSON:
+        return
+    if getattr(warn_if_mcp_configured, "_warned", set()).__contains__(provider_name):  # type: ignore[attr-defined]
+        return
+    warn_if_mcp_configured.__dict__.setdefault("_warned", set()).add(provider_name)
+    print(
+        f"[mcp] {provider_name!r} provider doesn't support remote MCP servers natively; "
+        f"MCP_SERVERS_JSON is ignored. Switch to LLM_PROVIDER=anthropic to use MCP."
+    )
+
+
 def resolve_personality(bot_name: str = "the bot") -> "Personality":
     """Pick the active personality based on env config.
 
