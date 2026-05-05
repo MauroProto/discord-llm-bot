@@ -1,14 +1,14 @@
 """Voice manager: join/leave VC, capture per-user audio, STT, generate, TTS, play.
 
-Toda la lógica de voz está aislada acá. El resto del bot solo sabe de VoiceManager.
+All voice logic is isolated here. The rest of the bot only knows VoiceManager.
 
 Pipeline:
-  Discord VC -> AudioSink (sync write, en thread de voice_recv)
+  Discord VC -> AudioSink (sync write, on the voice_recv thread)
              -> per-user PCM buffer
-             -> al detectar silencio (~VOICE_SILENCE_MS) flush:
+             -> on silence (~VOICE_SILENCE_MS) flush:
                 PCM -> WAV mono 16k -> ElevenLabs Scribe -> texto
-             -> guardar en daily .md (mismo archivo que texto)
-             -> si corresponde, generar respuesta con Claude (modo voz)
+             -> save to daily .md (same file as text exchanges)
+             -> if appropriate, generate a response via the LLM (voice mode)
              -> ElevenLabs TTS -> ffmpeg pipe -> voice_client.play()
 """
 
@@ -35,7 +35,7 @@ except ImportError:
 
 
 def _ensure_opus_loaded() -> None:
-    """En Linux/Docker discord.py a veces no encuentra libopus solo. Lo cargamos."""
+    """On Linux/Docker discord.py sometimes misses libopus on its own. Load it explicitly."""
     if not VOICE_RECV_AVAILABLE:
         return
     try:
@@ -44,13 +44,13 @@ def _ensure_opus_loaded() -> None:
         for name in ("libopus.so.0", "libopus.so", "opus"):
             try:
                 discord.opus.load_opus(name)
-                print(f"[OPUS] libopus cargada via {name}")
+                print(f"[OPUS] libopus loaded via {name}")
                 return
             except OSError:
                 continue
-        print("[OPUS] WARN: no pude cargar libopus explícitamente")
+        print("[OPUS] WARN: could not load libopus explicitly")
     except Exception as e:
-        print(f"[OPUS] error cargando libopus: {e}")
+        print(f"[OPUS] error loading libopus: {e}")
 
 
 _opus_errors_seen = 0
@@ -60,16 +60,16 @@ _dave_errors_seen = 0
 
 
 def _patch_voice_recv_for_dave() -> None:
-    """Monkey-patch para soportar DAVE encryption (Discord 2026+).
+    """Monkey-patch to support DAVE encryption (Discord 2026+).
 
-    Discord migró a DAVE (E2EE basado en MLS). discord-ext-voice-recv 0.5.2a179
-    NO desencripta DAVE antes de pasar al decoder Opus → 'corrupted stream'.
+    Discord migrated to DAVE (MLS-based E2EE). discord-ext-voice-recv 0.5.2a179
+    does NOT decrypt DAVE before handing the bytes to the Opus decoder, which results in "corrupted stream" errors.
 
-    Replicamos el fix del PR #54 (rdphillips7) inline:
-    - Antes de decode Opus, llamar dave_session.decrypt() para sacar la capa DAVE
-    - Try/except defensivo en _decode_packet
-    - Activar passthrough_mode al construir el decoder
-    - Filtrar data.source None en el router
+    We inline the fix from PR #54 (rdphillips7):
+    - Before Opus decode, call dave_session.decrypt() to peel the DAVE envelope
+    - Defensive try/except in _decode_packet
+    - Activate passthrough_mode when the decoder is built
+    - Filter out data.source None in the router
 
     Refs:
       https://github.com/imayhaveborkedit/discord-ext-voice-recv/issues/53
@@ -78,21 +78,21 @@ def _patch_voice_recv_for_dave() -> None:
     if not VOICE_RECV_AVAILABLE:
         return
 
-    # Detectar si el paquete davey está disponible (lo trae discord.py 2.7+)
+    # Detect whether the davey package is available (shipped with discord.py 2.7+)
     try:
         from davey import MediaType  # type: ignore
         has_dave = True
-        print("[DAVE] paquete davey disponible — DAVE soportado")
+        print("[DAVE] davey package available — DAVE supported")
     except ImportError:
         MediaType = None  # type: ignore
         has_dave = False
-        print("[DAVE] paquete davey NO disponible — Discord puede rechazar la conexión")
+        print("[DAVE] davey package NOT available — Discord may reject the voice connection")
 
     try:
         from discord.ext.voice_recv import opus as vr_opus  # type: ignore
         from discord.ext.voice_recv.opus import VoiceData  # type: ignore
 
-        if getattr(vr_opus, "_lain_dave_patched", False):
+        if getattr(vr_opus, "_dave_patched", False):
             return
 
         decoder_cls = vr_opus.PacketDecoder
@@ -102,15 +102,15 @@ def _patch_voice_recv_for_dave() -> None:
 
         def patched_init(self, router, ssrc):
             _orig_init(self, router, ssrc)
-            # Activa passthrough mode en la dave_session si existe
+            # Activate passthrough mode on the dave_session if available
             try:
                 vc = self.sink.voice_client
                 sess = getattr(vc._connection, "dave_session", None)
                 if sess is not None and hasattr(sess, "set_passthrough_mode"):
                     sess.set_passthrough_mode(True, 10)
-                    print(f"[DAVE] passthrough_mode activado para SSRC {ssrc}")
+                    print(f"[DAVE] passthrough_mode activated for SSRC {ssrc}")
             except Exception as e:
-                print(f"[DAVE] no pude activar passthrough en init: {e}")
+                print(f"[DAVE] could not activate passthrough on init: {e}")
 
         def patched_decode(self, packet):
             global _opus_errors_seen, _opus_ok_seen
@@ -133,11 +133,11 @@ def _patch_voice_recv_for_dave() -> None:
                 return packet, pcm
 
         def patched_process(self, packet):
-            """Replica _process_packet del PR #54 con desencriptación DAVE.
+            """Re-implements _process_packet from PR #54 with DAVE decryption.
 
-            Diferencia clave vs PR original: si member es None devolvemos None
-            (no VoiceData(source=None)) para que el _do_run ORIGINAL lo filtre
-            sin que tengamos que parcharlo.
+            Key difference vs the original PR: if member is None we return None
+            (not VoiceData(source=None)) so the ORIGINAL _do_run filters it
+            without us having to patch it ourselves.
             """
             global _dave_decrypts_seen, _dave_errors_seen
             pcm = None
@@ -151,7 +151,7 @@ def _patch_voice_recv_for_dave() -> None:
                     except Exception:
                         member = None
 
-                # Capa DAVE: desencriptar antes del Opus decode
+                # DAVE layer: decrypt before Opus decode
                 if (
                     has_dave
                     and member is not None
@@ -176,7 +176,7 @@ def _patch_voice_recv_for_dave() -> None:
                                 print(f"[DAVE] decrypt FALLO #{_dave_errors_seen}: {e}")
                             self._last_seq = packet.sequence
                             self._last_ts = packet.timestamp
-                            return None  # filtrado por el router original
+                            return None  # filtered by the original router
 
                 if not self.sink.wants_opus():
                     try:
@@ -190,15 +190,15 @@ def _patch_voice_recv_for_dave() -> None:
                 self._last_ts = packet.timestamp
                 return data
             except Exception as e:
-                print(f"[VOZ] patched_process unexpected: {type(e).__name__}: {e}")
+                print(f"[VOICE] patched_process unexpected: {type(e).__name__}: {e}")
                 return None
 
         decoder_cls.__init__ = patched_init
         decoder_cls._decode_packet = patched_decode
         decoder_cls._process_packet = patched_process
 
-        vr_opus._lain_dave_patched = True
-        print("[DAVE] monkey-patch aplicado: PacketDecoder.__init__/_decode_packet/_process_packet (sin tocar router)")
+        vr_opus._dave_patched = True
+        print("[DAVE] monkey-patch applied: PacketDecoder.__init__/_decode_packet/_process_packet (router untouched)")
     except Exception as e:
         import traceback
         print(f"[DAVE] no pude aplicar el patch: {e}")
@@ -323,10 +323,10 @@ def _build_sink_class():
                 return
             self._packet_count += 1
             if not self._first_logged:
-                print(f"[VOZ] primer paquete PCM recibido de {user} ({len(pcm)} bytes)")
+                print(f"[VOICE] first PCM packet from {user} ({len(pcm)} bytes)")
                 self._first_logged = True
             elif self._packet_count % 500 == 0:
-                print(f"[VOZ] {self._packet_count} paquetes PCM acumulados")
+                print(f"[VOICE] {self._packet_count} PCM packets accumulated")
             asyncio.run_coroutine_threadsafe(
                 self._session._on_user_audio(user.id, str(user), pcm), self._loop
             )
@@ -338,7 +338,7 @@ def _build_sink_class():
 
 
 class VoiceSession:
-    """Estado de una conexión de Lain a un canal de voz de un guild."""
+    """State of the bot's connection to a voice channel in one guild."""
 
     def __init__(
         self,
@@ -368,7 +368,7 @@ class VoiceSession:
         # Cancel-on-new-input: solo procesa la respuesta más reciente
         self._current_response_task: asyncio.Task | None = None
         self._current_stt_task: asyncio.Task | None = None
-        # Anti-eco: cuando Lain habla, su voz se rebota por mic de los humanos
+        # Anti-echo: when the bot speaks, its voice bounces back through the user mics
         # → ignorar audio entrante mientras habla + ECHO_GUARD_MS después
         self._is_speaking: bool = False
         self._speak_finished_at: float = 0.0
@@ -385,7 +385,7 @@ class VoiceSession:
         if self._closed:
             return
 
-        # ANTI-ECO: si Lain está hablando o terminó hace muy poco, IGNORAR audio
+        # ANTI-ECHO: ignore inbound audio while the bot is speaking, plus a short guard window after
         # entrante. Su propia voz se mete por el mic de los humanos y dispara
         # falsos barge-in. ECHO_GUARD_MS es la ventana posterior al TTS.
         ECHO_GUARD_MS = 800
@@ -396,20 +396,20 @@ class VoiceSession:
         ):
             return
 
-        # VAD por paquete: si es silencio (PCM cerca de ceros), NO extender el buffer
+        # Per-packet VAD: if it is silence (near-zero PCM), do NOT extend the buffer
         # y NO resetear el silence_timer. Threshold alto para evitar ruido de fondo.
         is_voice = _has_voice_signal(pcm, threshold_rms=400)
 
         if not is_voice:
             return
 
-        # Resetea timer de inactividad: hay actividad humana real en el VC
+        # Reset idle watchdog: real human activity in the VC
         self._last_audio_at = time.monotonic()
 
         buf = self._buffers.setdefault(user_id, bytearray())
         if not buf:
             self._buffer_started_at[user_id] = time.monotonic()
-            print(f"[VOZ] inicio de turno: {author}")
+            print(f"[VOICE] turn start: {author}")
             # Cancelar Claude/TTS PENDIENTE (en proceso de generar) si todavía
             # no empezó a sonar. Si ya sonando, NO interrumpir (lo termina).
             if self._current_response_task and not self._current_response_task.done():
@@ -418,7 +418,7 @@ class VoiceSession:
         buf.extend(pcm)
         self._authors[user_id] = author
 
-        # (Re)arma el timer de silencio para CERRAR el turno cuando deje de hablar
+        # (Re)arm the silence timer that closes the turn when the user stops speaking
         existing = self._silence_tasks.get(user_id)
         if existing and not existing.done():
             existing.cancel()
@@ -429,7 +429,7 @@ class VoiceSession:
         # Force-flush si el turno se hizo demasiado largo
         started = self._buffer_started_at.get(user_id, 0)
         if time.monotonic() - started >= settings.VOICE_MAX_TURN_SECONDS:
-            print(f"[VOZ] turno largo de {author} → flush forzado")
+            print(f"[VOICE] long turn from {author} → forced flush")
             await self._flush_user(user_id)
 
     async def _silence_timer(self, user_id: int) -> None:
@@ -460,16 +460,16 @@ class VoiceSession:
 
         author = self._authors.get(user_id, f"user_{user_id}")
         duration_ms = (len(pcm_bytes) / (PCM_SAMPLE_RATE * PCM_SAMPLE_WIDTH * PCM_CHANNELS)) * 1000
-        print(f"[VOZ] flush {author}: {len(pcm_bytes)}B (~{int(duration_ms)}ms) → STT")
+        print(f"[VOICE] flush {author}: {len(pcm_bytes)}B (~{int(duration_ms)}ms) → STT")
 
         try:
             wav = _pcm_to_wav_mono16k(pcm_bytes)
-            print(f"[VOZ][STT] enviando WAV de {len(wav)}B a ElevenLabs Scribe...")
+            print(f"[VOICE][STT] sending {len(wav)}B WAV to ElevenLabs Scribe...")
             stt_result = await elevenlabs_client.stt(wav, filename="voice.wav")
-            print(f"[VOZ][STT] respuesta: {stt_result!r}")
+            print(f"[VOICE][STT] response: {stt_result!r}")
         except Exception as e:
             import traceback
-            print(f"[VOZ][STT] error: {type(e).__name__}: {e}")
+            print(f"[VOICE][STT] error: {type(e).__name__}: {e}")
             traceback.print_exc()
             return
 
@@ -477,13 +477,13 @@ class VoiceSession:
         events = stt_result.get("audio_events", []) if isinstance(stt_result, dict) else []
 
         if not transcript:
-            print(f"[VOZ][STT] transcript VACÍO (events={events}) — Scribe no detectó habla en el audio")
+            print(f"[VOICE][STT] empty transcript (events={events}) — Scribe heard no speech")
             if events:
                 evt_str = " ".join(f"[{e}]" for e in events)
                 await self._handle_transcript(author, evt_str, events=events)
             return
         if len(transcript) < settings.VOICE_MIN_TURN_CHARS:
-            print(f"[VOZ][STT] transcript demasiado corto ({len(transcript)}c): {transcript!r}")
+            print(f"[VOICE][STT] transcript too short ({len(transcript)}c): {transcript!r}")
             return
 
         # Enriquecemos el transcript con los eventos detectados al final
@@ -507,7 +507,7 @@ class VoiceSession:
         text: str,
         events: list[str] | None = None,
     ) -> None:
-        print(f"[VOZ] {author}: {text}" + (f"  events={events}" if events else ""))
+        print(f"[VOICE] {author}: {text}" + (f"  events={events}" if events else ""))
 
         # 1) Guardar en memoria a corto plazo
         self.recent_transcripts.append({
@@ -523,10 +523,10 @@ class VoiceSession:
                 bot_response=None,
                 query=text,
                 author=author,
-                channel_name=f"VOZ:{self.voice_channel.name}",
+                channel_name=f"VOICE:{self.voice_channel.name}",
             )
         except Exception as e:
-            print(f"[VOZ] no pude guardar transcript: {e}")
+            print(f"[VOICE] could not save transcript: {e}")
 
         # 3) ¿Respondemos?
         if not self._should_respond(text):
@@ -535,7 +535,7 @@ class VoiceSession:
         if not await self._cooldown_ok():
             return
 
-        # Lanzamos como task para que sea cancelable cuando llegue audio nuevo
+        # Launch as a task so it can be cancelled when new audio arrives
         if self._current_response_task and not self._current_response_task.done():
             self._current_response_task.cancel()
         self._current_response_task = asyncio.create_task(self._respond(text))
@@ -577,7 +577,7 @@ class VoiceSession:
                 memory_text=memory,
             )
             t_claude = time.monotonic() - t0
-            print(f"[VOZ] Claude respondió en {t_claude:.1f}s: {response[:80]!r}")
+            print(f"[VOICE] LLM responded in {t_claude:.1f}s: {response[:80]!r}")
 
             if not response:
                 return
@@ -585,7 +585,7 @@ class VoiceSession:
             # Separar parte voz vs parte chat ([CHAT: ...] / [SOLO_CHAT: ...])
             voice_part, chat_parts = _split_voice_and_chat(response)
             if chat_parts:
-                print(f"[VOZ] Lain quiere mandar al chat: {chat_parts}")
+                print(f"[VOICE] LLM wants to send to text chat: {chat_parts}")
 
             # Guardar respuesta completa en .md diario
             try:
@@ -594,19 +594,19 @@ class VoiceSession:
                     bot_response=response,
                     query=None,
                     author=None,
-                    channel_name=f"VOZ:{self.voice_channel.name}",
+                    channel_name=f"VOICE:{self.voice_channel.name}",
                 )
             except Exception as e:
-                print(f"[VOZ] no pude guardar respuesta: {e}")
+                print(f"[VOICE] could not save response: {e}")
 
             self.recent_transcripts.append({
-                "author": "Lain",
+                "author": settings.BOT_DISPLAY_NAME or "bot",
                 "text": response,
                 "ts": datetime.now().isoformat(),
                 "is_bot": True,
             })
 
-            # 1) Mandar al chat de texto si Claude lo pidió
+            # 1) Send to the text channel if the LLM asked us to ([CHAT: ...])
             for chat_text in chat_parts:
                 if not chat_text:
                     continue
@@ -618,42 +618,62 @@ class VoiceSession:
                         for i in range(0, len(chat_text), 1900):
                             await self.text_channel.send(chat_text[i:i + 1900])
                 except Exception as e:
-                    print(f"[VOZ] no pude mandar al chat: {e}")
+                    print(f"[VOICE] could not send to text chat: {e}")
 
             # 2) Hablar por voz (si hay parte voz)
             if voice_part:
                 t1 = time.monotonic()
                 await self.speak(voice_part)
                 t_tts = time.monotonic() - t1
-                print(f"[VOZ] TTS+play tardó {t_tts:.1f}s (total: {(time.monotonic()-t0):.1f}s)")
+                print(f"[VOICE] TTS+play took {t_tts:.1f}s (total: {(time.monotonic()-t0):.1f}s)")
             else:
-                print(f"[VOZ] sin parte voz (todo fue al chat)")
+                print(f"[VOICE] no voice part (entirely routed to text chat)")
 
             self._last_response_at = time.monotonic()
 
         except asyncio.CancelledError:
-            print(f"[VOZ] respuesta cancelada (usuario habló cosa nueva)")
+            print(f"[VOICE] response cancelled (user spoke a new turn)")
             raise
         except Exception as e:
-            print(f"[VOZ] error generando/respondiendo: {e}")
+            print(f"[VOICE] error during generate/respond: {e}")
+
+    def _self_prefixes(self) -> tuple[str, ...]:
+        """Prefixes the bot may have used in its own past messages.
+
+        Comes from the live Discord username (when known via the voice
+        client) plus any legacy names listed in `LEGACY_SELF_PREFIXES`.
+        Used to strip them when re-feeding the conversation to the LLM.
+        """
+        legacy = [
+            s.strip() for s in (settings.LEGACY_SELF_PREFIXES or "").split(",") if s.strip()
+        ]
+        try:
+            user = self.voice_client.client.user  # type: ignore[union-attr]
+            if user:
+                return (f"{user.name}:", *legacy)
+        except Exception:
+            pass
+        return tuple(legacy)
 
     async def _build_claude_messages(self) -> list[dict]:
-        """Construye mensajes Claude: historial del CANAL DE TEXTO + transcripts de voz.
+        """Build LLM messages: text channel history + recent voice transcripts.
 
-        Antes solo usaba recent_transcripts de voz → Lain perdía toda la
-        conversación que había en el chat de texto. Ahora cargamos el historial
-        del canal de texto ligado y le agregamos los turnos de voz al final.
+        Voice replies need to know what was said in the linked text channel
+        too, otherwise the bot loses continuity when users alternate between
+        text and voice. We pull the text channel history first, then append
+        the recent in-session voice turns at the end.
         """
         msgs: list[dict] = []
 
-        # 1) Historial del canal de TEXTO (lo mismo que hace bot.on_message)
+        # 1) Text-channel history (same source as bot.on_message)
         try:
             text_history = await context_manager.get_channel_history(self.text_channel)
+            self_prefixes = self._self_prefixes()
             for m in text_history:
                 if m.get("is_bot"):
                     content = m["content"]
-                    # Quitar prefijos del bot si existen
-                    for prefix in ("Lain-bot#0013:", "Lain-bot:", "Lain:"):
+                    # Strip the bot's own prefix if it appears in past messages
+                    for prefix in self_prefixes:
                         if content.startswith(prefix):
                             content = content[len(prefix):].lstrip()
                             break
@@ -664,7 +684,7 @@ class VoiceSession:
                         "content": f"{m['author']}: {m['content']}",
                     })
         except Exception as e:
-            print(f"[VOZ] no pude cargar historial del canal de texto: {e}")
+            print(f"[VOICE] could not load text-channel history: {e}")
 
         # 2) Turnos recientes de voz (los más nuevos al final)
         for t in self.recent_transcripts:
@@ -674,7 +694,7 @@ class VoiceSession:
             else:
                 msgs.append({
                     "role": "user",
-                    "content": f"[VOZ] {t['author']}: {content}",
+                    "content": f"[VOICE] {t['author']}: {content}",
                 })
 
         # Limpieza: Claude requiere alternancia user/assistant. Colapsamos consecutivos.
@@ -699,7 +719,7 @@ class VoiceSession:
             cleaned = re.sub(r"\[[a-zA-Z][a-zA-Z\s]*\]", "", text)
             cleaned = re.sub(r"\s+", " ", cleaned).strip()
             if cleaned != text:
-                print(f"[VOZ][TTS] audio tags filtrados: {text!r} → {cleaned!r}")
+                print(f"[VOICE][TTS] audio tags stripped: {text!r} → {cleaned!r}")
             text = cleaned
             if not text:
                 return
@@ -707,10 +727,10 @@ class VoiceSession:
         try:
             mp3 = await elevenlabs_client.tts(text)
         except Exception as e:
-            print(f"[VOZ][TTS] error: {e}")
+            print(f"[VOICE][TTS] error: {e}")
             return
 
-        # Esperar si Lain ya está hablando
+        # Wait if the bot is already speaking
         while self.voice_client.is_playing():
             await asyncio.sleep(0.1)
 
@@ -719,10 +739,10 @@ class VoiceSession:
 
         def _after(err):
             if err:
-                print(f"[VOZ][PLAY] error: {err}")
+                print(f"[VOICE][PLAY] error: {err}")
             self.loop.call_soon_threadsafe(done.set)
 
-        # Marca anti-eco: ignorar audio entrante mientras Lain habla
+        # Anti-echo flag: ignore inbound audio while the bot is speaking
         self._is_speaking = True
         try:
             self.voice_client.play(source, after=_after)
@@ -734,7 +754,7 @@ class VoiceSession:
     # --- Idle auto-leave ---
 
     async def _idle_watchdog(self) -> None:
-        """Si pasan VOICE_IDLE_TIMEOUT_SECONDS sin recibir audio, Lain se va sola."""
+        """Auto-leave the VC after VOICE_IDLE_TIMEOUT_SECONDS with no inbound audio."""
         timeout = settings.VOICE_IDLE_TIMEOUT_SECONDS
         check_every = max(5, settings.VOICE_IDLE_CHECK_SECONDS)
         try:
@@ -744,15 +764,15 @@ class VoiceSession:
                     return
                 idle_for = time.monotonic() - self._last_audio_at
                 if idle_for >= timeout:
-                    print(f"[VOZ] sin audio por {int(idle_for)}s — me piro del VC")
+                    print(f"[VOICE] idle for {int(idle_for)}s — leaving VC")
                     # Avisar en el chat de texto antes de irse
                     try:
                         await self.text_channel.send(
-                            f"Me re aburrí, no escuché nada en {int(idle_for/60)} min. "
-                            "Me piro del canal de voz, llamame con `!join` cuando quieras. 👋"
+                            f"Idle for {int(idle_for/60)} min. "
+                            "Leaving the voice channel — call me back with `!join` when you want."
                         )
                     except Exception as e:
-                        print(f"[VOZ] no pude avisar idle leave: {e}")
+                        print(f"[VOICE] could not announce idle leave: {e}")
                     # Disparar leave SIN bloquear este task (el close() nos cancela)
                     guild_id = self.voice_channel.guild.id
                     asyncio.create_task(voice_manager.leave(guild_id))
@@ -786,7 +806,7 @@ class VoiceSession:
                         pass
                 await self.voice_client.disconnect(force=True)
             except Exception as e:
-                print(f"[VOZ] error desconectando: {e}")
+                print(f"[VOICE] disconnect error: {e}")
 
 
 class VoiceManager:

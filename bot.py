@@ -1,4 +1,9 @@
-"""Lain Discord Bot — Core module with event handlers and commands."""
+"""Discord LLM Bot — core module with event handlers and commands.
+
+A multi-provider Discord bot powered by Claude / GPT / Gemini / OpenRouter,
+with optional voice channel support via ElevenLabs (TTS + Scribe STT) and a
+unified text+voice memory store. See README for setup.
+"""
 
 import base64
 import os
@@ -44,19 +49,23 @@ def _mark_processed(message_id: int) -> None:
 @bot.event
 async def on_ready():
     """Bot is connected and ready."""
-    print(f"Lain conectada como {bot.user} (ID: {bot.user.id})")
-    print(f"Guild permitido: {settings.ALLOWED_GUILD_ID or 'Ninguno (todos)'}")
-    print(f"Canal permitido: {settings.ALLOWED_CHANNEL_ID or 'Ninguno (todos)'}")
-    print("Lain esta viva y lista para romper las pelotas.")
+    print(f"[bot] connected as {bot.user} (ID: {bot.user.id})")
+    print(f"[bot] allowed guild:   {settings.ALLOWED_GUILD_ID or 'any'}")
+    print(f"[bot] allowed channel: {settings.ALLOWED_CHANNEL_ID or 'any'}")
+    print(f"[bot] LLM provider:    {claude_client.name}")
+    print(f"[bot] personality:     {getattr(claude_client._personality, 'id', 'n/a')}")
+    # Let context_manager use the live Discord username when persisting
+    # exchanges, so the saved markdown reflects the real bot identity.
+    context_manager.set_bot_name(bot.user.name)
 
 
 def _should_respond(message: discord.Message) -> bool:
-    """Determine if Lain should respond to a message.
-    
+    """Determine if the bot should respond to a message.
+
     Returns True if:
-    - Bot is mentioned (@Lain)
+    - The bot is mentioned (@bot)
     - Message starts with command prefix
-    - Contains specific keywords (if spontaneous enabled)
+    - Spontaneous mode is enabled and the keyword set matches
     """
     # Ignore own messages and empty messages
     if message.author.bot:
@@ -101,7 +110,23 @@ def _should_respond(message: discord.Message) -> bool:
     return False
 
 
-_BOT_SELF_PREFIXES = ("Lain-bot#0013:", "Lain-bot:", "Lain:")
+def _bot_self_prefixes() -> tuple[str, ...]:
+    """Prefixes the bot may have used in its own past messages, so the
+    history builder can strip them when re-feeding the conversation back
+    to the LLM. Computed lazily because `bot.user` is only available
+    after login. Includes any extra legacy prefixes from
+    `LEGACY_SELF_PREFIXES` env (CSV) for forks that renamed."""
+    legacy = [
+        s.strip() for s in (settings.LEGACY_SELF_PREFIXES or "").split(",") if s.strip()
+    ]
+    if not bot.user:
+        return tuple(legacy)
+    name = bot.user.name
+    discriminator = getattr(bot.user, "discriminator", None)
+    runtime = [f"{name}:"]
+    if discriminator and discriminator != "0":
+        runtime.append(f"{name}#{discriminator}:")
+    return tuple(runtime + legacy)
 
 
 def _build_claude_history(history: list[dict], exclude_id: int | None = None) -> list[dict]:
@@ -112,7 +137,7 @@ def _build_claude_history(history: list[dict], exclude_id: int | None = None) ->
             continue
         if msg.get("is_bot"):
             content = msg["content"]
-            for prefix in _BOT_SELF_PREFIXES:
+            for prefix in _bot_self_prefixes():
                 if content.startswith(prefix):
                     content = content[len(prefix):].lstrip()
                     break
@@ -134,7 +159,8 @@ _MAX_TEXT_BYTES = 200_000  # cap per text attachment
 
 async def _build_user_content(message: discord.Message, bot_user_id: int):
     """Build the current user message content for Claude — text or multimodal blocks."""
-    cleaned_text = message.content.replace(f"<@{bot_user_id}>", "@Lain").strip()
+    bot_handle = f"@{bot.user.name}" if bot.user else "@bot"
+    cleaned_text = message.content.replace(f"<@{bot_user_id}>", bot_handle).strip()
     base = f"{message.author}: {cleaned_text}" if cleaned_text else f"{message.author}:"
 
     # Collect attachments from current message + referenced (replied-to) message
@@ -149,10 +175,10 @@ async def _build_user_content(message: discord.Message, bot_user_id: int):
                 attachments.extend(ref_msg.attachments)
                 if ref_msg.content:
                     ref_text = (
-                        f"[Respondiendo a {ref_msg.author}: \"{ref_msg.content[:300]}\"]"
+                        f"[Replying to {ref_msg.author}: \"{ref_msg.content[:300]}\"]"
                     )
         except Exception as e:
-            print(f"[REF] no pude leer el mensaje referenciado: {e}")
+            print(f"[REF] could not read referenced message: {e}")
 
     if ref_text:
         base = f"{ref_text}\n{base}"
@@ -320,7 +346,7 @@ async def on_message(message: discord.Message):
                     else:
                         await message.channel.send(chunk)
 
-            # Mirror a voz si Lain está conectada al VC del mismo guild
+            # Mirror to voice if the bot is currently connected to a VC in this guild
             if (
                 settings.VOICE_MIRROR_TEXT
                 and message.guild
@@ -335,7 +361,7 @@ async def on_message(message: discord.Message):
                     try:
                         await session.speak(spoken)
                     except Exception as e:
-                        print(f"[VOZ] mirror error: {e}")
+                        print(f"[VOICE] mirror error: {e}")
     
     except Exception as e:
         print(f"Error en on_message: {e}")
@@ -352,100 +378,124 @@ async def on_message(message: discord.Message):
 
 @bot.command(name="ask")
 async def ask_cmd(ctx: commands.Context, *, question: str):
-    """Ask Lain anything with full context."""
-    # Triggered via !ask, but on_message handles it too. 
-    # This is a fallback if the user prefers explicit command.
+    """Ask the bot anything with full context."""
+    handle = f"@{bot.user.name}" if bot.user else "@bot"
     await ctx.reply(
-        "Che, podes preguntarme directo mencionandome (@Lain) y te respondo con contexto automaticamente. "
-        "Pero si preferis usar !ask, tambien funciona. Proba con @Lain!",
-        mention_author=False
+        f"You can mention me directly with {handle} and I'll reply with full "
+        f"channel context. `!ask` also works as an explicit fallback.",
+        mention_author=False,
     )
 
 
 @bot.command(name="resumen")
 async def resumen_cmd(ctx: commands.Context, limit: int = 50):
-    """Summarize the last N messages."""
+    """Summarise the last N messages of the current channel."""
     try:
         async with ctx.typing():
             history = await context_manager.get_channel_history(ctx.channel, limit=limit)
             chat_text = "\n".join([
-                f"{m['author']}: {m['content']}" 
+                f"{m['author']}: {m['content']}"
                 for m in history if m['content'].strip()
             ])
-            
+
             response = await claude_client.analyze_conversation(
                 history_text=chat_text,
-                task=f"Resumi la siguiente conversacion de Discord en español, estilo Lain (directa, con onda, honesta). Hace un resumen util de los ultimos {limit} mensajes.",
+                task=(
+                    f"Summarise the following Discord conversation. Match the tone "
+                    f"and language of the channel (don't translate). Cover the last "
+                    f"{limit} messages: who said what, what was decided, what's open."
+                ),
             )
-            
+
             if len(response) <= 2000:
-                await ctx.reply(f"**Resumen de Lain:**\n{response}", mention_author=False)
+                await ctx.reply(f"**Summary:**\n{response}", mention_author=False)
             else:
                 await ctx.reply(response[:1900] + "...", mention_author=False)
-    
+
     except Exception as e:
-        print(f"Error en resumen: {e}")
-        await ctx.reply("Me rompi haciendo el resumen. Reintentame.", mention_author=False)
+        print(f"[bot] !resumen error: {e}")
+        await ctx.reply("Couldn't build the summary, try again.", mention_author=False)
 
 
 @bot.command(name="contexto")
 async def contexto_cmd(ctx: commands.Context):
-    """Show today's saved context file."""
+    """Send today's saved context file."""
     try:
         date_str = datetime.now().strftime("%Y-%m-%d")
         filepath = context_manager.contexts_dir / f"{date_str}.md"
-        
+
         if not filepath.exists():
-            await ctx.reply("Todavia no hay contexto guardado hoy. Hablame primero, capo.", mention_author=False)
+            await ctx.reply(
+                "No context saved yet today. Send me a message first.",
+                mention_author=False,
+            )
             return
-        
+
         # Send as file if it's long
         file_size = filepath.stat().st_size
-        if file_size > 8000000:  # 8MB Discord limit
-            await ctx.reply("El archivo de contexto es muy grande, te lo mando en partes.", mention_author=False)
+        if file_size > 8_000_000:  # 8MB Discord upload cap
+            await ctx.reply(
+                "Today's context is too big to upload in one piece.",
+                mention_author=False,
+            )
             return
-        
+
         await ctx.reply(
-            f"Aca va el contexto de hoy ({date_str}):",
+            f"Here's today's saved context ({date_str}):",
             file=discord.File(filepath),
-            mention_author=False
+            mention_author=False,
         )
-    
+
     except Exception as e:
-        print(f"Error en contexto: {e}")
-        await ctx.reply("No pude leer el contexto. Reintentame.", mention_author=False)
+        print(f"[bot] !contexto error: {e}")
+        await ctx.reply("Couldn't read the context file, try again.", mention_author=False)
 
 
 @bot.command(name="buscar")
 async def buscar_cmd(ctx: commands.Context, *, query: str):
-    """Manual web search via fallback."""
+    """Manual web search via the configured fallback provider."""
     try:
         async with ctx.typing():
             results = await search_client.search(query)
             formatted = search_client.format_results(results)
-            
-            # Also send to Claude for a witty summary
-            claude_response = await claude_client.generate_response([
-                {"role": "user", "content": f"Busque esto en internet: '{query}'. Resultados:\n{formatted}\n\nDame un resumen corto y directo de lo que encontre, con tu onda de Lain."}
+
+            # Have the LLM summarise the results in its current personality.
+            llm_response = await claude_client.generate_response([
+                {
+                    "role": "user",
+                    "content": (
+                        f"I searched the web for: '{query}'.\n\nResults:\n{formatted}\n\n"
+                        f"Give me a short, direct summary of what came up."
+                    ),
+                }
             ])
-            
-            await ctx.reply(claude_response[:1900], mention_author=False)
-    
+
+            await ctx.reply(llm_response[:1900], mention_author=False)
+
     except Exception as e:
-        print(f"Error en buscar: {e}")
-        await ctx.reply("La busqueda fallo. Capaz no tengo API key de busqueda configurada.", mention_author=False)
+        print(f"[bot] !buscar error: {e}")
+        await ctx.reply(
+            "Search failed. (Check that a search API key is configured.)",
+            mention_author=False,
+        )
 
 
 @bot.command(name="lain")
 async def lain_cmd(ctx: commands.Context):
     """Bot info."""
+    bot_label = bot.user.name if bot.user else "Bot"
+    handle = f"@{bot_label}"
+    personality_id = getattr(claude_client._personality, "id", "n/a")
     info = (
-        f"**Soy Lain** 🤘\n"
-        f"Modelo: `{settings.ANTHROPIC_MODEL}`\n"
-        f"Guild permitido: `{settings.ALLOWED_GUILD_ID or 'Cualquiera'}`\n"
-        f"Canal permitido: `{settings.ALLOWED_CHANNEL_ID or 'Cualquiera'}`\n"
-        f"Contexto: `{settings.HISTORY_LIMIT}` mensajes de historial\n"
-        f"\nMencioname (@Lain) y hablamos. O usa `{settings.BOT_PREFIX}helpbot` para ver comandos."
+        f"**{bot_label}**\n"
+        f"Provider: `{claude_client.name}`\n"
+        f"Model: `{claude_client.model}`\n"
+        f"Personality: `{personality_id}`\n"
+        f"Allowed guild: `{settings.ALLOWED_GUILD_ID or 'any'}`\n"
+        f"Allowed channel: `{settings.ALLOWED_CHANNEL_ID or 'any'}`\n"
+        f"History window: `{settings.HISTORY_LIMIT}` messages\n"
+        f"\nMention me with {handle} to talk. "
+        f"Use `{settings.BOT_PREFIX}helpbot` for commands."
     )
     await ctx.reply(info, mention_author=False)
 
@@ -453,19 +503,21 @@ async def lain_cmd(ctx: commands.Context):
 @bot.command(name="helpbot")
 async def helpbot_cmd(ctx: commands.Context):
     """Show help."""
+    handle = f"@{bot.user.name}" if bot.user else "@bot"
+    p = settings.BOT_PREFIX
     help_text = (
-        f"**Comandos de Lain:**\n"
-        f"`@Lain <mensaje>` — Habla conmigo, leo el historial y respondo con contexto\n"
-        f"`{settings.BOT_PREFIX}resumen [N]` — Resumo los ultimos N mensajes (default 50)\n"
-        f"`{settings.BOT_PREFIX}contexto` — Te mando el archivo .md de hoy con todo el contexto guardado\n"
-        f"`{settings.BOT_PREFIX}buscar <query>` — Busco en internet (fallback manual)\n"
-        f"`{settings.BOT_PREFIX}join` — Me meto a tu canal de voz (alias: `entra`, `vozon`)\n"
-        f"`{settings.BOT_PREFIX}leave` — Salgo del canal de voz (alias: `sali`, `vozoff`, `chau`)\n"
-        f"`{settings.BOT_PREFIX}sayvoz <texto>` — Forzá que diga algo por voz\n"
-        f"`{settings.BOT_PREFIX}lain` — Info del bot\n"
-        f"`{settings.BOT_PREFIX}helpbot` — Este mensaje\n"
-        f"\n**Tip:** Mencioname (@Lain) en cualquier momento y participo de la conversacion con todo el contexto del chat. "
-        f"También podés decirme en lenguaje natural «metete al canal de voz» o «andate del canal»."
+        f"**Commands**\n"
+        f"`{handle} <message>` — chat with me; I read recent history and reply with context\n"
+        f"`{p}resumen [N]` — summarise the last N messages (default 50)\n"
+        f"`{p}contexto` — send today's saved `.md` context file\n"
+        f"`{p}buscar <query>` — manual web search\n"
+        f"`{p}join` — join your voice channel (aliases: `entra`, `vozon`)\n"
+        f"`{p}leave` — leave the voice channel (aliases: `sali`, `vozoff`, `chau`)\n"
+        f"`{p}sayvoz <text>` — force the bot to speak something via TTS\n"
+        f"`{p}lain` — bot info\n"
+        f"`{p}helpbot` — this message\n"
+        f"\n**Tip:** mention me ({handle}) any time and I'll join the conversation with full chat context. "
+        f"Natural-language phrases like “join voice channel” or “leave voice” also work."
     )
     await ctx.reply(help_text, mention_author=False)
 
@@ -488,7 +540,7 @@ def _voice_disabled_msg() -> str:
     if not settings.VOICE_ENABLED:
         return "La voz está desactivada (VOICE_ENABLED=false en .env)."
     if not settings.ELEVENLABS_API_KEY:
-        return "Falta ELEVENLABS_API_KEY en .env, no puedo hablar."
+        return "ELEVENLABS_API_KEY is missing in .env — voice cannot start."
     if not VOICE_RECV_AVAILABLE:
         return "Falta el paquete `discord-ext-voice-recv`. Reinstalá las dependencias."
     return ""
@@ -500,7 +552,7 @@ async def _do_join(ctx: commands.Context) -> None:
         await ctx.reply(err, mention_author=False)
         return
     if not ctx.guild:
-        await ctx.reply("Esto solo funciona en un servidor.", mention_author=False)
+        await ctx.reply("This only works in a server.", mention_author=False)
         return
 
     vc: discord.VoiceChannel | None = None
@@ -525,27 +577,30 @@ async def _do_join(ctx: commands.Context) -> None:
             return
         vc = ch
 
-    # 2) Sino, usar el VC en el que está el usuario
+    # 2) Otherwise, use whichever VC the calling user is currently in.
     else:
         if not isinstance(ctx.author, discord.Member) or not ctx.author.voice or not ctx.author.voice.channel:
             await ctx.reply(
-                "Metete vos primero a un canal de voz, capo, así sé a cuál unirme. "
-                "(o seteá VOICE_CHANNEL_ID en el .env para que entre siempre al mismo)",
+                "Join a voice channel first so I know which one to connect to. "
+                "(Or set `VOICE_CHANNEL_ID` in your env to always join the same one.)",
                 mention_author=False,
             )
             return
         candidate = ctx.author.voice.channel
         if not isinstance(candidate, discord.VoiceChannel):
-            await ctx.reply("Ese canal no es de voz, no me puedo conectar.", mention_author=False)
+            await ctx.reply("That isn't a voice channel — I can't connect.", mention_author=False)
             return
         vc = candidate
 
     try:
         await voice_manager.join(vc, ctx.channel)
-        await ctx.reply(f"🎙️ Estoy en **{vc.name}**. Hablen tranqui que escucho y participo.", mention_author=False)
+        await ctx.reply(
+            f"Connected to **{vc.name}**. I'm listening; talk away.",
+            mention_author=False,
+        )
     except Exception as e:
-        print(f"[VOZ] join error: {e}")
-        await ctx.reply(f"No pude conectarme: {e}", mention_author=False)
+        print(f"[VOICE] join error: {e}")
+        await ctx.reply(f"Couldn't connect: {e}", mention_author=False)
 
 
 async def _do_leave(ctx: commands.Context) -> None:
@@ -553,9 +608,9 @@ async def _do_leave(ctx: commands.Context) -> None:
         return
     ok = await voice_manager.leave(ctx.guild.id)
     if ok:
-        await ctx.reply("Listo, me piré del canal de voz. Sigo en el chat. 👋", mention_author=False)
+        await ctx.reply("Left the voice channel. Still here in chat.", mention_author=False)
     else:
-        await ctx.reply("No estaba en ningún canal de voz, capa.", mention_author=False)
+        await ctx.reply("Wasn't in any voice channel.", mention_author=False)
 
 
 @bot.command(name="join", aliases=["entra", "vozon", "meteteacanal"])
@@ -572,7 +627,7 @@ async def leave_cmd(ctx: commands.Context):
 async def sayvoz_cmd(ctx: commands.Context, *, text: str):
     """Forzar TTS en el canal de voz actual."""
     if not ctx.guild or not voice_manager.is_connected(ctx.guild.id):
-        await ctx.reply("No estoy en un canal de voz. Decime `!join` primero.", mention_author=False)
+        await ctx.reply("I'm not in a voice channel. Use `!join` first.", mention_author=False)
         return
     session = voice_manager.get(ctx.guild.id)
     if not session:
@@ -580,12 +635,12 @@ async def sayvoz_cmd(ctx: commands.Context, *, text: str):
     try:
         await session.speak(text)
     except Exception as e:
-        await ctx.reply(f"Error de TTS: {e}", mention_author=False)
+        await ctx.reply(f"TTS error: {e}", mention_author=False)
 
 
 @bot.event
 async def on_voice_state_update(member: discord.Member, before, after):
-    """Si Lain queda sola en el VC, se desconecta sola."""
+    """Auto-leave the VC if the bot ends up alone (no humans)."""
     if not member.guild:
         return
     session = voice_manager.get(member.guild.id)
@@ -597,7 +652,7 @@ async def on_voice_state_update(member: discord.Member, before, after):
     # Cuenta humanos en el canal (excluyendo bots)
     humans = [m for m in vc.members if not m.bot]
     if not humans:
-        print(f"[VOZ] me quedé sola en {vc.name}, me piro")
+        print(f"[VOICE] me quedé sola en {vc.name}, me piro")
         await voice_manager.leave(member.guild.id)
 
 

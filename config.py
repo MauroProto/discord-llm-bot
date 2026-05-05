@@ -51,6 +51,15 @@ class Config(BaseSettings):
             "the bot's actual Discord username is used at runtime."
         ),
     )
+    LEGACY_SELF_PREFIXES: str | None = Field(
+        default=None,
+        description=(
+            "Optional CSV of historic prefixes the bot may have used in its "
+            "own past messages (e.g. when you renamed the bot). The history "
+            "builder strips them when re-feeding the conversation to the LLM. "
+            "Example: 'OldName:,OldName-bot:'."
+        ),
+    )
     CUSTOM_SYSTEM_PROMPT: str | None = Field(
         default=None,
         description=(
@@ -290,7 +299,7 @@ class Config(BaseSettings):
         description="Si true, contesta a todo lo que oye en VC sin esperar wake word"
     )
     VOICE_WAKE_WORDS: str = Field(
-        default="lain",
+        default="bot",
         description="CSV de wake words (solo se usan si VOICE_ALWAYS_RESPOND=false)"
     )
     VOICE_MIN_TURN_CHARS: int = Field(
@@ -299,7 +308,7 @@ class Config(BaseSettings):
     )
     VOICE_COOLDOWN_MS: int = Field(
         default=1500,
-        description="Tiempo mínimo entre dos respuestas de Lain en VC"
+        description="Min ms between two consecutive bot replies in VC."
     )
     VOICE_SILENCE_MS: int = Field(
         default=800,
@@ -315,7 +324,7 @@ class Config(BaseSettings):
     )
     VOICE_IDLE_TIMEOUT_SECONDS: int = Field(
         default=120,
-        description="Si no llega audio por este tiempo, Lain se va sola del VC. 0 = desactivado."
+        description="Auto-leave the VC if no audio arrives for this long (seconds). 0 disables."
     )
     VOICE_IDLE_CHECK_SECONDS: int = Field(
         default=15,
